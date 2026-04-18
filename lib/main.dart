@@ -22,13 +22,18 @@ void main() async {
     DeviceOrientation.portraitUp,
   ]);
 
-  // Set system UI style
+  // Set system UI style for a premium edge-to-edge experience
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF111111),
+    statusBarBrightness: Brightness.dark,
+    systemNavigationBarColor: Colors.transparent,
     systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarContrastEnforced: false,
   ));
+
+  // Enable edge-to-edge mode
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   // Initialize Hive local storage
   await HiveService.init();
