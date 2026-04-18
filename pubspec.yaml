@@ -1,0 +1,58 @@
+name: retrolab
+description: "RetroLab — Next-gen disposable camera simulator with premium analog feel."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Camera & Media
+  camera: ^0.11.0+1
+  image: ^4.5.0
+  path_provider: ^2.1.4
+  permission_handler: ^11.3.1
+  image_picker: ^1.1.2
+
+  # Date formatting
+  intl: ^0.19.0
+
+  # UI & Design
+  google_fonts: ^6.2.1
+  lottie: ^3.1.2
+
+  # Local storage
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Audio
+  audioplayers: ^6.1.0
+
+  # Share
+  share_plus: ^10.1.4
+  gal: ^2.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.13
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/light_leaks/
+    - assets/lottie/
+    - assets/sounds/
+    - assets/icons/
+    - assets/textures/
+
+  fonts:
+    - family: RetroDigital
+      fonts:
+        - asset: assets/fonts/RetroDigital.ttf
