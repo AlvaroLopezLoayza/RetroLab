@@ -41,7 +41,6 @@ class ImageProcessingException implements Exception {
   String toString() => 'ImageProcessingException: $message';
 }
 
-/// Result of image processing — contains both the file and raw bytes.
 class ProcessingResult {
   final File file;
   final Uint8List bytes;
@@ -64,6 +63,7 @@ class ImageProcessor {
     required FilmStock filmStock,
     double? grain,
     double leakStrength = 0.6,
+    double dustStrength = 0.0, // ✅ NEW (safe default)
     double? saturationOverride,
     double? vignette,
     double scratchLevel = 0.0,
@@ -82,33 +82,45 @@ class ImageProcessor {
     Uint8List? dustBytes;
 
     final effectiveGrain = grain ?? filmStock.baseGrain;
+
+    // ── Grain ─────────────────────────────────────────────
     if (effectiveGrain > 0) {
       try {
         final data = await rootBundle.load(RetroAssets.textureGrain);
         grainBytes = data.buffer.asUint8List();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[RetroLab] Grain load failed → procedural fallback: $e');
+      }
     }
 
+    // ── Scratches ─────────────────────────────────────────
     if (scratchLevel > 0) {
       try {
         final data = await rootBundle.load(RetroAssets.textureScratch);
         scratchBytes = data.buffer.asUint8List();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[RetroLab] Scratch load failed: $e');
+      }
     }
 
-    if (analogRandomness) {
-      final roll = Random().nextDouble();
-      if (roll < 0.3) {
-        final leakIndex = Random().nextInt(10) + 1;
-        try {
-          final data = await rootBundle.load(RetroAssets.lightLeak(leakIndex));
-          leakBytes = data.buffer.asUint8List();
-        } catch (_) {}
-      } else if (roll < 0.55) {
-        try {
-          final data = await rootBundle.load(RetroAssets.textureDust);
-          dustBytes = data.buffer.asUint8List();
-        } catch (_) {}
+    // ── Light Leaks (v3 fix) ──────────────────────────────
+    if (leakStrength > 0) {
+      final leakIndex = _random.nextInt(42);
+      try {
+        final data = await rootBundle.load(RetroAssets.lightLeak(leakIndex));
+        leakBytes = data.buffer.asUint8List();
+      } catch (e) {
+        debugPrint('[RetroLab] Leak asset $leakIndex failed: $e');
+      }
+    }
+
+    // ── Dust (v3 fix) ─────────────────────────────────────
+    if (dustStrength > 0) {
+      try {
+        final data = await rootBundle.load(RetroAssets.textureDust);
+        dustBytes = data.buffer.asUint8List();
+      } catch (e) {
+        debugPrint('[RetroLab] Dust load failed: $e');
       }
     }
 
@@ -132,6 +144,7 @@ class ImageProcessor {
           leakBytes: leakBytes,
           dustBytes: dustBytes,
           leakStrength: leakStrength,
+          dustStrength: dustStrength,
         );
       });
 
@@ -141,22 +154,26 @@ class ImageProcessor {
         retroDir.createSync(recursive: true);
       }
 
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final outputFile = File('${retroDir.path}/retro_$timestamp.jpg');
-      await outputFile.writeAsBytes(processedBytes);
+      final file = File(
+          '${retroDir.path}/retro_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await file.writeAsBytes(processedBytes);
 
       try {
-        await Gal.putImage(outputFile.path);
+        await Gal.putImage(file.path);
       } catch (e) {
-        debugPrint('Failed to save to gallery: $e');
+        debugPrint('Gallery save failed: $e');
       }
 
-      return ProcessingResult(file: outputFile, bytes: processedBytes);
+      return ProcessingResult(file: file, bytes: processedBytes);
     } catch (e) {
       if (e is ImageDecodeException || e is ImageProcessingException) rethrow;
-      throw ImageProcessingException('Unexpected error during processing: $e');
+      throw ImageProcessingException('Unexpected error: $e');
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ISOLATE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   static Uint8List _processImageBytesInIsolate(
     Uint8List originalBytes, {
@@ -176,12 +193,10 @@ class ImageProcessor {
     Uint8List? leakBytes,
     Uint8List? dustBytes,
     required double leakStrength,
+    required double dustStrength,
   }) {
     img.Image? image = img.decodeImage(originalBytes);
-    if (image == null) {
-      throw ImageDecodeException(
-          'Format potentially unsupported or file corrupted');
-    }
+    if (image == null) throw ImageDecodeException();
 
     if (image.width > 2400) {
       image = img.copyResize(image, width: 2400);
@@ -192,42 +207,46 @@ class ImageProcessor {
     }
 
     final effectiveGrain = grain ?? filmStock.baseGrain;
-    final effectiveSaturation = saturationOverride ?? filmStock.saturation;
+    // For B&W films (saturation = 0.0), always enforce B&W regardless of override
+    final effectiveSaturation = filmStock.saturation == 0.0
+        ? 0.0
+        : (saturationOverride ?? filmStock.saturation);
     final effectiveVignette = vignette ?? filmStock.baseVignette;
 
-    // Step 1: Film stock color grading (with tone mapping)
     _applyFilmStockGrading(image, filmStock, effectiveSaturation);
 
-    // Step 2: Grain
+    // Grain
     if (effectiveGrain > 0 && grainBytes != null) {
       _applyTextureOverlay(image, grainBytes, effectiveGrain, false);
     } else if (effectiveGrain > 0) {
       _applyProceduralGrain(image, effectiveGrain, filmStock.coloredGrain);
     }
 
-    // Step 3: Vignette
+    // Vignette
     if (effectiveVignette > 0) {
       _applyVignette(image, effectiveVignette);
     }
 
-    // Step 4: Scratches
+    // Scratches
     if (scratchLevel > 0 && scratchBytes != null) {
       _applyTextureOverlay(image, scratchBytes, scratchLevel, true);
     }
 
-    // Step 5: Light leaks / dust
+    // Leaks
     if (leakBytes != null) {
       _applyTextureOverlay(image, leakBytes, leakStrength, true);
     }
+
+    // Dust
     if (dustBytes != null) {
-      _applyTextureOverlay(image, dustBytes, 0.4, true);
+      _applyTextureOverlay(image, dustBytes, dustStrength, true);
     }
 
-    if (analogRandomness && leakBytes == null && dustBytes == null) {
+    // Procedural randomness (independent now)
+    if (analogRandomness) {
       _applyProceduralAnalogRandomness(image, filmStock);
     }
 
-    // Step 6: Date stamp
     if (dateStampEnabled) {
       _drawDateStamp(image, captureDate, dateStampStyle, dateStampPosition);
     }
@@ -354,10 +373,18 @@ class ImageProcessor {
               (shB * 255 - b) * shadowMask * ts * 0.25;
         }
 
+        // ── Shadow Lift (film base fog) ──────────────────────────────
+        // Lifts the black point so shadows never go to pure black.
+        // Formula: output = input * (1 - lift) + 255 * lift
+        // At lift=0.04 a pixel at 0 becomes ~10, matching real C-41 scan minimums.
+        if (stock.shadowLift > 0) {
+          final lift = stock.shadowLift;
+          r = r * (1.0 - lift) + 255 * lift;
+          g = g * (1.0 - lift) + 255 * lift;
+          b = b * (1.0 - lift) + 255 * lift;
+        }
+ 
         // ── Soft-Knee Tone Mapping (primary burn fix) ─────────────────
-        // FIX: Run values through a rolloff LUT instead of hard-clamping.
-        // Values below ~200 pass through unchanged; highlights compress
-        // gently into the 200–255 range rather than blowing out.
         pixel.r = toneLUT[r.round().clamp(0, 300)];
         pixel.g = toneLUT[g.round().clamp(0, 300)];
         pixel.b = toneLUT[b.round().clamp(0, 300)];
