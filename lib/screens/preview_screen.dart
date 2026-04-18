@@ -63,8 +63,10 @@ class _PreviewScreenState extends State<PreviewScreen>
 
   Future<void> _shareAsPolaroid() async {
     try {
+      final filmStock = FilmStocks.getById(widget.photo.filmStockId);
       final polaroidFile = await ImageProcessor.createPolaroidFrame(
         File(widget.photo.processedPath),
+        filterName: filmStock.name,
       );
       Share.shareXFiles(
         [XFile(polaroidFile.path)],

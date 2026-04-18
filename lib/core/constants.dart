@@ -110,7 +110,7 @@ class RetroAssets {
   static const String textureScratch = 'assets/textures/scratch.png';
   static const String textureDust = 'assets/textures/dust.png';
 
-  static String lightLeak(int index) => '$lightLeakPrefix$index.png';
+  static String lightLeak(int index) => '$lightLeakPrefix$index.jpg';
 }
 
 // ── Hive Box Names ───────────────────────────────────────────────────────────
