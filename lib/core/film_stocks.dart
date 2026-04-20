@@ -146,12 +146,12 @@ class FilmStock {
 
   /// Human-readable process label for UI badges.
   String get processLabel => switch (filmProcess) {
-        FilmProcess.c41 => 'C-41',
-        FilmProcess.e6 => 'E-6',
-        FilmProcess.blackAndWhite => 'B&W',
-        FilmProcess.instant => 'Instant',
-        FilmProcess.cinematic => 'ECN-2',
-      };
+    FilmProcess.c41 => 'C-41',
+    FilmProcess.e6 => 'E-6',
+    FilmProcess.blackAndWhite => 'B&W',
+    FilmProcess.instant => 'Instant',
+    FilmProcess.cinematic => 'ECN-2',
+  };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -184,32 +184,29 @@ class FilmStocks {
   ];
 
   // ── Kodak Gold 200 ─────────────────────────────────────────────────────
-  // Warm golden highlights, slightly boosted reds, fine grain.
-  // FIX: contrast was 1.05 (old multiplier) → 0.03 (subtle S-curve boost).
-  static const kodakGold200 = FilmStock(
+  static const FilmStock kodakGold200 = FilmStock(
     id: 'kodak_gold_200',
-    name: 'Kodak Gold 200',
-    shortName: 'GOLD 200',
-    description:
-        'Warm golden tones with rich skin colours. The definitive summer film.',
-    badgeColor: RetroColors.kodakYellow,
+    name: 'K-Gold 200',
+    shortName: 'GOLD',
+    description: 'Tonos cálidos nostálgicos. Ideal para días soleados.',
+    badgeColor: Color(0xFFFFC107),
     icon: Icons.wb_sunny,
     filmProcess: FilmProcess.c41,
     iso: 200,
-    temperature: 0.28,
-    saturation: 1.12,
-    contrast: 0.03, // was 1.05 — subtle warmth lift, not a hard push
+    temperature: 0.25,
+    saturation: 1.30,
+    contrast: 0.12,
     brightness: 0.02,
-    shadowLift: 0.04, // slight milky lift in shadows
-    highlightTint: Color(0xFFFFE082),
+    shadowLift: 0.04,
+    highlightTint: Color(0xFFFFD54F),
     shadowTint: Color(0xFF4E342E),
-    tintStrength: 0.14,
-    baseGrain: 0.10, // ISO 200 = tighter grain than 400
+    tintStrength: 0.30,
+    baseGrain: 0.18,
     coloredGrain: true,
-    baseVignette: 0.25,
-    redGamma: 0.91, // boost reds for warmth
-    greenGamma: 0.98,
-    blueGamma: 1.10, // roll off blue to reduce coolness
+    baseVignette: 0.3,
+    redGamma: 0.85,
+    greenGamma: 1.0,
+    blueGamma: 1.25,
   );
 
   // ── Kodak Ultramax 400 ────────────────────────────────────────────────
@@ -219,7 +216,8 @@ class FilmStocks {
     id: 'kodak_ultramax_400',
     name: 'Kodak Ultramax 400',
     shortName: 'UMAX 400',
-    description: 'Punchy and versatile. Strong colour separation with a '
+    description:
+        'Punchy and versatile. Strong colour separation with a '
         'slight warm bias. The original point-and-shoot staple.',
     badgeColor: Color(0xFFE65100),
     icon: Icons.filter_vintage,
@@ -242,32 +240,29 @@ class FilmStocks {
   );
 
   // ── Kodak Portra 400 ──────────────────────────────────────────────────
-  // The professional portrait standard. Pastel, skin-flattering, wide latitude.
-  // Low contrast, lifted shadows, natural warmth — NOT punchy.
-  static const kodakPortra400 = FilmStock(
-    id: 'kodak_portra_400',
-    name: 'Kodak Portra 400',
-    shortName: 'PORTRA',
-    description: 'The professional portrait standard. Pastel highlights, '
-        'flattering skin tones, and extraordinary latitude.',
-    badgeColor: Color(0xFFBCAAA4),
+  static const FilmStock kodakPortra400 = FilmStock(
+    id: 'portra_400',
+    name: 'P-Portra 400',
+    shortName: 'PRT400',
+    description: 'Tonos de piel perfectos. Colores suaves y desaturados.',
+    badgeColor: Color(0xFFFF8A65),
     icon: Icons.face,
     filmProcess: FilmProcess.c41,
     iso: 400,
-    temperature: 0.14,
-    saturation: 0.88, // intentionally desaturated — Portra is not vivid
-    contrast: -0.04, // deliberately soft / low contrast
+    temperature: 0.18,
+    saturation: 0.80,
+    contrast: -0.15,
     brightness: 0.02,
-    shadowLift: 0.06, // lifted blacks — very characteristic of Portra
-    highlightTint: Color(0xFFFFE0B2), // peach
-    shadowTint: Color(0xFF37474F), // cool blue-grey shadows
-    tintStrength: 0.16,
-    baseGrain: 0.13,
+    shadowLift: 0.06,
+    highlightTint: Color(0xFFFFAB91),
+    shadowTint: Color(0xFF37474F),
+    tintStrength: 0.10,
+    baseGrain: 0.12,
     coloredGrain: true,
-    baseVignette: 0.20,
-    redGamma: 0.93, // warm reds
-    greenGamma: 0.97,
-    blueGamma: 1.05, // slightly muted blue
+    baseVignette: 0.2,
+    redGamma: 0.88,
+    greenGamma: 1.0,
+    blueGamma: 1.12,
   );
 
   // ── Kodak Ektar 100 ───────────────────────────────────────────────────
@@ -277,7 +272,8 @@ class FilmStocks {
     id: 'kodak_ektar_100',
     name: 'Kodak Ektar 100',
     shortName: 'EKTAR',
-    description: 'Ultra-vivid landscape film with the finest grain of any '
+    description:
+        'Ultra-vivid landscape film with the finest grain of any '
         'colour negative. Reds are extraordinary.',
     badgeColor: Color(0xFFC62828),
     icon: Icons.landscape,
@@ -300,60 +296,55 @@ class FilmStocks {
   );
 
   // ── Fuji Superia 400 ──────────────────────────────────────────────────
-  // Cool greens, natural skin tones, slightly muted palette.
-  // FIX: contrast was 1.1 → 0.07; tightened temperature from -0.1 → -0.08.
-  static const fujiSuperia400 = FilmStock(
+  static const FilmStock fujiSuperia400 = FilmStock(
     id: 'fuji_superia_400',
-    name: 'Fuji Superia 400',
-    shortName: 'SUPERIA',
-    description:
-        'Cool green tones with natural colours. Perfect for everyday memories.',
-    badgeColor: RetroColors.fujiGreen,
-    icon: Icons.eco,
+    name: 'F-Superia 400',
+    shortName: 'SUP400',
+    description: 'Tonos fríos y verdes enfatizados. Estilo clásico.',
+    badgeColor: Color(0xFF4CAF50),
+    icon: Icons.grass,
     filmProcess: FilmProcess.c41,
     iso: 400,
-    temperature: -0.08,
-    saturation: 0.95,
-    contrast: 0.07, // was 1.1
+    temperature: -0.15,
+    saturation: 1.25,
+    contrast: 0.16,
     brightness: 0.0,
     shadowLift: 0.03,
-    highlightTint: Color(0xFFDCEDC8), // pale green tint in highlights
+    highlightTint: Color(0xFF81C784),
     shadowTint: Color(0xFF1B5E20),
-    tintStrength: 0.11,
-    baseGrain: 0.15,
+    tintStrength: -0.30,
+    baseGrain: 0.25,
     coloredGrain: true,
-    baseVignette: 0.30,
-    redGamma: 1.05,
-    greenGamma: 0.92, // enhanced green channel
+    baseVignette: 0.4,
+    redGamma: 1.15,
+    greenGamma: 0.82,
     blueGamma: 1.0,
   );
 
   // ── Agfa Vista 200 ────────────────────────────────────────────────────
-  // Warm pinks and purples, slightly faded, beloved for its accidental beauty.
-  static const agfaVista200 = FilmStock(
+  static const FilmStock agfaVista200 = FilmStock(
     id: 'agfa_vista_200',
-    name: 'Agfa Vista 200',
+    name: 'A-Vista 200',
     shortName: 'VISTA',
-    description: 'Pink and purple casts with a warm glow. '
-        'Discontinued but never forgotten.',
-    badgeColor: Color(0xFFAD1457),
-    icon: Icons.favorite,
+    description: 'Colores muy saturados y vibrantes. Tonos rojos intensos.',
+    badgeColor: Color(0xFFF44336),
+    icon: Icons.local_fire_department,
     filmProcess: FilmProcess.c41,
     iso: 200,
-    temperature: 0.12,
-    saturation: 0.92,
-    contrast: 0.02,
+    temperature: 0.05,
+    saturation: 1.45,
+    contrast: 0.25,
     brightness: 0.03,
     shadowLift: 0.05,
-    highlightTint: Color(0xFFF8BBD9), // pink highlights
-    shadowTint: Color(0xFF6A1B9A), // purple shadows
-    tintStrength: 0.20,
-    baseGrain: 0.11,
+    highlightTint: Color(0xFFEF5350),
+    shadowTint: Color(0xFF6A1B9A),
+    tintStrength: 0.15,
+    baseGrain: 0.20,
     coloredGrain: true,
-    baseVignette: 0.28,
-    redGamma: 0.90,
-    greenGamma: 1.03,
-    blueGamma: 0.94, // slight magenta push
+    baseVignette: 0.35,
+    redGamma: 0.80,
+    greenGamma: 1.0,
+    blueGamma: 0.90,
   );
 
   // ── Fuji Velvia 50 ────────────────────────────────────────────────────
@@ -364,7 +355,8 @@ class FilmStocks {
     id: 'fuji_velvia_50',
     name: 'Fuji Velvia 50',
     shortName: 'VELVIA',
-    description: 'The landscape photographer\'s weapon. Hyper-saturated colours, '
+    description:
+        'The landscape photographer\'s weapon. Hyper-saturated colours, '
         'punchy contrast, with greens and blues that glow.',
     badgeColor: Color(0xFF00838F),
     icon: Icons.filter_hdr,
@@ -387,63 +379,55 @@ class FilmStocks {
   );
 
   // ── Ilford HP5 Plus ───────────────────────────────────────────────────
-  // Classic B&W with rich tonal range.
-  // FIX: contrast was 1.25 (old multiplier) → 0.14 (S-curve).
-  static const ilfordHP5 = FilmStock(
+  static const FilmStock ilfordHP5 = FilmStock(
     id: 'ilford_hp5',
-    name: 'Ilford HP5 Plus',
-    shortName: 'HP5 B&W',
-    description: 'Legendary B&W film. Deep contrast with creamy mid-tones '
-        'and expressive grain.',
-    badgeColor: RetroColors.ilfordWhite,
+    name: 'I-HP5 Plus',
+    shortName: 'HP5+',
+    description: 'Blanco y negro clásico con alto contraste y grano.',
+    badgeColor: Color(0xFF424242),
     icon: Icons.contrast,
     filmProcess: FilmProcess.blackAndWhite,
     iso: 400,
     temperature: 0.0,
-    saturation: 0.0, // B&W
-    contrast: 0.14, // was 1.25
+    saturation: 0.0,
+    contrast: 0.35,
     brightness: 0.01,
-    shadowLift: 0.04, // slight zone-system lift
-    highlightTint: Color(0xFFF5F5F5),
+    shadowLift: 0.04,
+    highlightTint: Colors.white,
     shadowTint: Color(0xFF212121),
-    tintStrength: 0.05,
-    baseGrain: 0.22,
+    tintStrength: 0.0,
+    baseGrain: 0.35,
     coloredGrain: false,
-    baseVignette: 0.35,
-    redGamma: 1.0,
-    greenGamma: 1.0,
-    blueGamma: 1.0,
+    baseVignette: 0.5,
+    redGamma: 0.82,
+    greenGamma: 0.82,
+    blueGamma: 0.88,
   );
 
   // ── CineStill 800T ────────────────────────────────────────────────────
-  // Kodak Vision 500T motion picture film respooled for stills.
-  // Tungsten-balanced (very blue at daylight), heavy halation, cinema grain.
-  // The remjet layer is removed, causing the characteristic red halation glow
-  // around bright light sources — emulated here via highlight tinting.
-  static const cineStill800T = FilmStock(
+  static const FilmStock cineStill800T = FilmStock(
     id: 'cinestill_800t',
-    name: 'CineStill 800T',
-    shortName: 'CS 800T',
-    description: 'Kodak cinema film respooled for still cameras. '
-        'Tungsten blue tones, red halation, and cinematic grain.',
-    badgeColor: Color(0xFF1565C0),
-    icon: Icons.movie,
+    name: 'C-Still 800T',
+    shortName: '800T',
+    description: 'Magia de neón nocturna. Sombras frías y alto contraste.',
+    badgeColor: Color(0xFF29B6F6),
+    icon: Icons.nightlife,
     filmProcess: FilmProcess.cinematic,
     iso: 800,
-    temperature: -0.32, // very cool / tungsten-balanced
-    saturation: 1.05,
-    contrast: 0.07,
+    temperature: -0.35,
+    saturation: 1.15,
+    contrast: 0.22,
     brightness: 0.02,
     shadowLift: 0.05,
-    highlightTint: Color(0xFFFF5252), // RED halation — the signature look
-    shadowTint: Color(0xFF0D47A1), // deep blue shadows
-    tintStrength: 0.22, // halation needs to be visible
-    baseGrain: 0.22, // ISO 800 motion picture grain
+    highlightTint: Color(0xFFFF5252),
+    shadowTint: Color(0xFF0D47A1),
+    tintStrength: -0.15,
+    baseGrain: 0.28,
     coloredGrain: true,
-    baseVignette: 0.30,
-    redGamma: 1.04, // halation adds reds back in highlights via tint
+    baseVignette: 0.45,
+    redGamma: 0.90,
     greenGamma: 1.0,
-    blueGamma: 0.86, // strong blue channel boost (tungsten)
+    blueGamma: 0.70,
   );
 
   // ── Polaroid 600 ──────────────────────────────────────────────────────
@@ -512,7 +496,8 @@ class FilmStocks {
     id: 'expired_1998',
     name: 'Expired 1998',
     shortName: 'EXP 98',
-    description: 'Found in grandma\'s attic. Unpredictable colour shifts, '
+    description:
+        'Found in grandma\'s attic. Unpredictable colour shifts, '
         'pink casts, and beautiful accidents.',
     badgeColor: RetroColors.expiredPink,
     icon: Icons.auto_awesome,

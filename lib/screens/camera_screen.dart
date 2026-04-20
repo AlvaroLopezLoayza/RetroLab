@@ -48,6 +48,7 @@ class _CameraScreenState extends State<CameraScreen>
   late FilmRoll _currentRoll;
   bool _showFilmSelector = false;
   bool _showControls = false;
+  final ScrollController _filmSelectorScrollController = ScrollController();
 
   // ── Effect Controls ────────────────────────────────────────────────────
   double _grain = 0.18;
@@ -76,6 +77,7 @@ class _CameraScreenState extends State<CameraScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadOrCreateRoll();
+    _initializeEffectsFromFilmStock();
     _initCamera();
   }
 
@@ -84,7 +86,20 @@ class _CameraScreenState extends State<CameraScreen>
     WidgetsBinding.instance.removeObserver(this);
     _cameraController?.dispose();
     _audioPlayer.dispose();
+    _filmSelectorScrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollToSelectedFilm() {
+    final index = FilmStocks.all.indexWhere((s) => s.id == _selectedStock.id);
+    if (index >= 0 && _filmSelectorScrollController.hasClients) {
+      final position = index * 95.0; // Rough item width estimate
+      _filmSelectorScrollController.animateTo(
+        position,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   @override
@@ -107,34 +122,48 @@ class _CameraScreenState extends State<CameraScreen>
       if (!mounted) return;
       bool? consent = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: RetroColors.surface,
-          title: Text(
-            'Camera Access',
-            style: GoogleFonts.spaceMono(color: RetroColors.textPrimary),
-          ),
-          content: Text(
-            'RetroLab needs camera access to capture your analog moments. Operations are offline and hardware access is only active when the app is open.',
-            style: GoogleFonts.inter(color: RetroColors.textSecondary),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('DENY', style: GoogleFonts.spaceMono(color: RetroColors.textMuted)),
+        builder:
+            (ctx) => AlertDialog(
+              backgroundColor: RetroColors.surface,
+              title: Text(
+                'Acceso a la Cámara',
+                style: GoogleFonts.spaceMono(color: RetroColors.textPrimary),
+              ),
+              content: Text(
+                'RetroLab necesita acceso a la cámara para capturar tus momentos analógicos. Las operaciones son sin conexión y el hardware solo se activa con la app abierta.',
+                style: GoogleFonts.inter(color: RetroColors.textSecondary),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(
+                    'DENEGAR',
+                    style: GoogleFonts.spaceMono(color: RetroColors.textMuted),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: RetroColors.accent,
+                  ),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(
+                    'PERMITIR',
+                    style: GoogleFonts.spaceMono(
+                      color: RetroColors.background,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: RetroColors.accent),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text('ALLOW', style: GoogleFonts.spaceMono(color: RetroColors.background, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
       );
 
       if (consent != true) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Camera permission required to shoot film.')),
+            const SnackBar(
+              content: Text('Se requiere permiso de cámara para tomar fotos.'),
+            ),
           );
         }
         return;
@@ -145,7 +174,7 @@ class _CameraScreenState extends State<CameraScreen>
     if (!status.isGranted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Camera permission is required')),
+          const SnackBar(content: Text('Se requiere permiso de cámara')),
         );
       }
       return;
@@ -154,13 +183,15 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       _cameras = await availableCameras();
       if (_cameras.isEmpty) {
-        throw Exception('No cameras found on device');
+        throw Exception('No se encontraron cámaras en el dispositivo');
       }
       await _setupCamera(_cameras[_currentCameraIndex]);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Camera initialization failed: \${e.toString()}')),
+          SnackBar(
+            content: Text('Fallo al inicializar la cámara: ${e.toString()}'),
+          ),
         );
       }
     }
@@ -217,6 +248,18 @@ class _CameraScreenState extends State<CameraScreen>
     );
     HiveService.rollsBox.put(_currentRoll.id, _currentRoll.toMap());
     HiveService.incrementRolls();
+  }
+
+  /// Initialize effect parameters to the selected film stock's base values.
+  /// Called on app startup and whenever the film stock changes.
+  void _initializeEffectsFromFilmStock() {
+    setState(() {
+      _grain = _selectedStock.baseGrain;
+      _vignette = _selectedStock.baseVignette;
+      _saturation = _selectedStock.saturation;
+      _leakStrength = 0.0; // Disabled by default
+      _scratchLevel = 0.0; // Disabled by default
+    });
   }
 
   // ── Capture Logic ──────────────────────────────────────────────────────
@@ -276,17 +319,18 @@ class _CameraScreenState extends State<CameraScreen>
       // Navigate to processing screen
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ProcessingScreen(
-            originalFile: file,
-            filmStock: _selectedStock,
-            roll: _currentRoll,
-            photoId: photoId,
-            grain: _grain,
-            leakStrength: _leakStrength,
-            saturation: _saturation,
-            vignette: _vignette,
-            scratchLevel: _scratchLevel,
-          ),
+          builder:
+              (_) => ProcessingScreen(
+                originalFile: file,
+                filmStock: _selectedStock,
+                roll: _currentRoll,
+                photoId: photoId,
+                grain: _grain,
+                leakStrength: _leakStrength,
+                saturation: _saturation,
+                vignette: _vignette,
+                scratchLevel: _scratchLevel,
+              ),
         ),
       );
     } catch (e) {
@@ -294,7 +338,7 @@ class _CameraScreenState extends State<CameraScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to capture photo: $e'),
+            content: Text('Error al capturar la foto: $e'),
             backgroundColor: RetroColors.error,
           ),
         );
@@ -306,7 +350,9 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _playShutterSound() {
     try {
-      _audioPlayer.play(AssetSource(RetroAssets.soundShutter.replaceFirst('assets/', '')));
+      _audioPlayer.play(
+        AssetSource(RetroAssets.soundShutter.replaceFirst('assets/', '')),
+      );
     } catch (_) {
       // Sound asset not available — skip
     }
@@ -324,18 +370,19 @@ class _CameraScreenState extends State<CameraScreen>
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ProcessingScreen(
-          originalFile: file,
-          filmStock: _selectedStock,
-          roll: _currentRoll,
-          photoId: photoId,
-          grain: _grain,
-          leakStrength: _leakStrength,
-          saturation: _saturation,
-          vignette: _vignette,
-          scratchLevel: _scratchLevel,
-          isImported: true,
-        ),
+        builder:
+            (_) => ProcessingScreen(
+              originalFile: file,
+              filmStock: _selectedStock,
+              roll: _currentRoll,
+              photoId: photoId,
+              grain: _grain,
+              leakStrength: _leakStrength,
+              saturation: _saturation,
+              vignette: _vignette,
+              scratchLevel: _scratchLevel,
+              isImported: true,
+            ),
       ),
     );
   }
@@ -365,51 +412,52 @@ class _CameraScreenState extends State<CameraScreen>
   void _showFilmFinishedDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: RetroColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
-        ),
-        title: Text(
-          RetroStrings.filmFinished,
-          style: GoogleFonts.spaceMono(color: RetroColors.accent),
-          textAlign: TextAlign.center,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.camera_roll,
-              size: 64,
-              color: RetroColors.dateYellow,
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: RetroColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Your ${_selectedStock.name} roll is fully exposed!\n'
-              'Load a new roll to keep shooting.',
-              style: GoogleFonts.inter(
-                color: RetroColors.textSecondary,
-                height: 1.5,
-              ),
+            title: Text(
+              RetroStrings.filmFinished,
+              style: GoogleFonts.spaceMono(color: RetroColors.accent),
               textAlign: TextAlign.center,
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('VIEW LAB'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.camera_roll,
+                  size: 64,
+                  color: RetroColors.dateYellow,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '¡Tu rollo ${_selectedStock.name} está totalmente expuesto!\n'
+                  'Carga un nuevo rollo para seguir disparando.',
+                  style: GoogleFonts.inter(
+                    color: RetroColors.textSecondary,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('VER LAB'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _createNewRoll();
+                  setState(() {});
+                },
+                child: const Text(RetroStrings.loadNewRoll),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _createNewRoll();
-              setState(() {});
-            },
-            child: const Text(RetroStrings.loadNewRoll),
-          ),
-        ],
-      ),
     );
   }
 
@@ -430,7 +478,10 @@ class _CameraScreenState extends State<CameraScreen>
                   child: SizedBox(
                     width: _cameraController!.value.previewSize?.height ?? 1,
                     height: _cameraController!.value.previewSize?.width ?? 1,
-                    child: CameraPreview(_cameraController!),
+                    child: ColorFiltered(
+                      colorFilter: _buildColorFilter(_selectedStock),
+                      child: CameraPreview(_cameraController!),
+                    ),
                   ),
                 ),
               ),
@@ -439,7 +490,7 @@ class _CameraScreenState extends State<CameraScreen>
             Positioned.fill(
               child: Center(
                 child: Text(
-                  '[ WARMING UP SENSOR... ]',
+                  '[ CALENTANDO SENSOR... ]',
                   style: GoogleFonts.spaceMono(
                     color: RetroColors.accent,
                     fontSize: 14,
@@ -451,8 +502,47 @@ class _CameraScreenState extends State<CameraScreen>
             ),
 
           // ── Film Grain Overlay ─────────────────────────────────────────
-          const Positioned.fill(
-            child: GrainOverlay(opacity: 0.03),
+          // Use film stock's base grain intensity (0.06–0.22) for accurate preview
+          Positioned.fill(
+            child: GrainOverlay(
+              opacity: (_selectedStock.baseGrain * 0.15).clamp(0.03, 0.25),
+              animate: true,
+            ),
+          ),
+
+          // ── Vignette & Tint Overlay (Live Preview) ─────────────────────
+          // Layered vignette: highlight tint center, dark vignette edges, shadow tint corners
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    colors: [
+                      // Center: subtle highlight tint (warm/cool shift)
+                      _selectedStock.highlightTint.withValues(
+                        alpha: (_selectedStock.tintStrength * 0.08).clamp(
+                          0.0,
+                          0.15,
+                        ),
+                      ),
+                      // Mid: neutral transition
+                      Colors.transparent,
+                      // Edges: vignette darkening + shadow tint
+                      _selectedStock.shadowTint.withValues(
+                        alpha: (_vignette * 0.6).clamp(0.0, 1.0),
+                      ),
+                      // Corners: strong vignette with shadow tint
+                      Colors.black.withValues(
+                        alpha: (_vignette * 0.85).clamp(0.0, 1.0),
+                      ),
+                    ],
+                    center: Alignment.center,
+                    radius: 1.0,
+                    stops: const [0.0, 0.4, 0.7, 1.0],
+                  ),
+                ),
+              ),
+            ),
           ),
 
           // ── Viewfinder Overlay ─────────────────────────────────────────
@@ -492,33 +582,44 @@ class _CameraScreenState extends State<CameraScreen>
             ),
 
           // ── Film Stock Selector (expandable) ──────────────────────────
-          if (_showFilmSelector)
-            Positioned(
-              bottom: 160,
-              left: 0,
-              right: 0,
-              child: Container(
-                color: RetroColors.background.withValues(alpha: 0.9),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: FilmStockSelector(
-                  selectedStock: _selectedStock,
-                  onStockChanged: (stock) {
-                    setState(() {
-                      _selectedStock = stock;
-                      _showFilmSelector = false;
-                    });
-                  },
+          Positioned(
+            bottom: 160,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              ignoring: !_showFilmSelector,
+              child: AnimatedOpacity(
+                opacity: _showFilmSelector ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  color: RetroColors.background.withValues(alpha: 0.9),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: FilmStockSelector(
+                    controller: _filmSelectorScrollController,
+                    selectedStock: _selectedStock,
+                    onStockChanged: (stock) {
+                      setState(() {
+                        _selectedStock = stock;
+                        _showFilmSelector = false;
+                        _currentRoll = _currentRoll.copyWith(
+                          filmStockId: stock.id,
+                        );
+                      });
+                      HiveService.rollsBox.put(
+                        _currentRoll.id,
+                        _currentRoll.toMap(),
+                      );
+                      // Update effect parameters to new film stock's base values
+                      _initializeEffectsFromFilmStock();
+                    },
+                  ),
                 ),
               ),
             ),
+          ),
 
           // ── Bottom Bar ─────────────────────────────────────────────────
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildBottomBar(),
-          ),
+          Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
 
           // ── Top Action Bar ─────────────────────────────────────────────
           Positioned(
@@ -538,25 +639,25 @@ class _CameraScreenState extends State<CameraScreen>
                       Icons.grid_3x3,
                       () => setState(() => _showGrid = !_showGrid),
                       active: _showGrid,
-                      tooltip: 'Grid',
+                      tooltip: 'Cuadrícula',
                     ),
                     _iconButton(
                       Icons.flip_camera_ios,
                       _flipCamera,
-                      tooltip: 'Flip Camera',
+                      tooltip: 'Cambiar Cámara',
                     ),
                     _iconButton(
                       Icons.timer,
                       _cycleTimer,
                       active: _shutterTimer != ShutterTimer.off,
                       label: _shutterTimer.label,
-                      tooltip: 'Timer',
+                      tooltip: 'Temporizador',
                     ),
                     _iconButton(
                       Icons.burst_mode,
                       () => setState(() => _isBurstMode = !_isBurstMode),
                       active: _isBurstMode,
-                      tooltip: 'Burst Mode',
+                      tooltip: 'Modo Ráfaga',
                     ),
                   ],
                 ),
@@ -598,13 +699,15 @@ class _CameraScreenState extends State<CameraScreen>
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: active
-                  ? RetroColors.accent.withValues(alpha: 0.2)
-                  : Colors.black.withValues(alpha: 0.4),
+              color:
+                  active
+                      ? RetroColors.accent.withValues(alpha: 0.2)
+                      : Colors.black.withValues(alpha: 0.4),
               shape: BoxShape.circle,
-              border: active
-                  ? Border.all(color: RetroColors.accent, width: 1.5)
-                  : null,
+              border:
+                  active
+                      ? Border.all(color: RetroColors.accent, width: 1.5)
+                      : null,
             ),
             child: Stack(
               alignment: Alignment.center,
@@ -612,7 +715,8 @@ class _CameraScreenState extends State<CameraScreen>
                 Icon(
                   icon,
                   size: 20,
-                  color: active ? RetroColors.accent : RetroColors.textSecondary,
+                  color:
+                      active ? RetroColors.accent : RetroColors.textSecondary,
                 ),
                 if (label != null)
                   Positioned(
@@ -646,14 +750,49 @@ class _CameraScreenState extends State<CameraScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: RetroDimens.paddingMd),
+                child: Text(
+                  'AJUSTES',
+                  style: GoogleFonts.spaceMono(
+                    color: RetroColors.accent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _grain = _selectedStock.baseGrain;
+                    _leakStrength = 0.0;
+                    _saturation = _selectedStock.saturation;
+                    _vignette = _selectedStock.baseVignette;
+                    _scratchLevel = 0.0;
+                  });
+                },
+                child: Text(
+                  'RESTAURAR',
+                  style: GoogleFonts.spaceMono(
+                    color: RetroColors.textSecondary,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           RetroSlider(
-            label: 'GRAIN',
+            label: 'GRANO',
             icon: Icons.grain,
             value: _grain,
             onChanged: (v) => setState(() => _grain = v),
           ),
           RetroSlider(
-            label: 'LEAK',
+            label: 'FUGA',
             icon: Icons.flare,
             value: _leakStrength,
             onChanged: (v) => setState(() => _leakStrength = v),
@@ -667,13 +806,13 @@ class _CameraScreenState extends State<CameraScreen>
             onChanged: (v) => setState(() => _saturation = v),
           ),
           RetroSlider(
-            label: 'VIGNETTE',
+            label: 'VIÑETA',
             icon: Icons.vignette,
             value: _vignette,
             onChanged: (v) => setState(() => _vignette = v),
           ),
           RetroSlider(
-            label: 'SCRATCH',
+            label: 'RAYAS',
             icon: Icons.brush,
             value: _scratchLevel,
             onChanged: (v) => setState(() => _scratchLevel = v),
@@ -710,20 +849,26 @@ class _CameraScreenState extends State<CameraScreen>
               _bottomAction(
                 icon: Icons.photo_library_outlined,
                 label: 'LAB',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LabScreen()),
-                ),
+                onTap:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LabScreen()),
+                    ),
               ),
 
               // Film selector toggle
               _bottomAction(
-                icon: Icons.camera_roll_outlined,
+                icon: _selectedStock.icon,
                 label: 'FILM',
-                onTap: () =>
-                    setState(() {
+                onTap:
+                    () => setState(() {
                       _showFilmSelector = !_showFilmSelector;
                       _showControls = false;
+                      if (_showFilmSelector) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _scrollToSelectedFilm();
+                        });
+                      }
                     }),
                 active: _showFilmSelector,
               ),
@@ -738,8 +883,8 @@ class _CameraScreenState extends State<CameraScreen>
               _bottomAction(
                 icon: Icons.tune,
                 label: 'FX',
-                onTap: () =>
-                    setState(() {
+                onTap:
+                    () => setState(() {
                       _showControls = !_showControls;
                       _showFilmSelector = false;
                     }),
@@ -749,7 +894,7 @@ class _CameraScreenState extends State<CameraScreen>
               // Import from gallery
               _bottomAction(
                 icon: Icons.add_photo_alternate_outlined,
-                label: 'IMPORT',
+                label: 'IMPORTAR',
                 onTap: _importFromGallery,
               ),
             ],
@@ -794,5 +939,104 @@ class _CameraScreenState extends State<CameraScreen>
         ),
       ),
     );
+  }
+
+  /// Builds an improved color matrix that closely replicates the film processor's
+  /// color grading for real-time camera preview. Includes:
+  /// - Accurate saturation using luminance formula
+  /// - S-curve contrast matching the processor
+  /// - Shadow lift (emulates film base fog)
+  /// - Per-channel gamma approximation
+  /// - Highlight-aware temperature shift
+  /// - Highlight/shadow tint contributions
+  ColorFilter _buildColorFilter(FilmStock stock) {
+    // ── SHADOW LIFT ────────────────────────────────────────────────
+    // Lifts black point: pixel' = pixel * (1 - lift) + 255 * lift
+    // In matrix form, this is applied as a uniform offset
+    final shadowLiftOffset =
+        stock.shadowLift * 255.0; // ~10-20 for typical films
+
+    // ── SATURATION ────────────────────────────────────────────────
+    // Accurate luminance coefficients (BT.709)
+    final sat = stock.saturation;
+    const lumR = 0.2126;
+    const lumG = 0.7152;
+    const lumB = 0.0722;
+    final invSat = 1.0 - sat;
+
+    // Saturation matrix: desaturated channels
+    final satR = lumR * invSat;
+    final satG = lumG * invSat;
+    final satB = lumB * invSat;
+
+    // ── CONTRAST (S-CURVE) ────────────────────────────────────────
+    // Photoshop-equivalent formula: factor = (c > 0) ? 1.0 + c*2.0 : 1.0 + c
+    // Clamped to safe range [-1.0, 1.0]
+    final contrastClamped = stock.contrast.clamp(-1.0, 1.0);
+    final contrastFactor =
+        (contrastClamped > 0)
+            ? 1.0 + contrastClamped * 2.0
+            : 1.0 + contrastClamped;
+    final contrastOffset = 128.0 * (1.0 - contrastFactor);
+
+    // ── TEMPERATURE ───────────────────────────────────────────────
+    // Scale by ~20 (processor uses 20, preview was using 35 exaggerated)
+    // Warm shifts red/green, cool shifts blue
+    final tempShift = stock.temperature * 20.0;
+
+    // ── PER-CHANNEL GAMMA (APPROXIMATION) ──────────────────────
+    // Gamma < 1.0 brightens (boosts low values more), > 1.0 darkens
+    // Approximated as: adjusted = channel * gamma_factor
+    // where gamma_factor ≈ 1.0 + (gamma - 1.0) * 0.5
+    // This is a linear approximation; exact gamma would need per-pixel math
+    final redGammaFactor = 1.0 + (stock.redGamma - 1.0) * 0.5;
+    final greenGammaFactor = 1.0 + (stock.greenGamma - 1.0) * 0.5;
+    final blueGammaFactor = 1.0 + (stock.blueGamma - 1.0) * 0.5;
+
+    // ── HIGHLIGHT & SHADOW TINTING ────────────────────────────────
+    // Convert color to normalized 0-1 range for compositing
+    final hlR = stock.highlightTint.r;
+    final hlG = stock.highlightTint.g;
+    final hlB = stock.highlightTint.b;
+    final tintStr = stock.tintStrength * 0.15; // Reduced for subtlety
+
+    // Approximate highlight/shadow tint by adding weighted color offset
+    // Highlights (bright areas) get highlightTint
+    // Use approximate luminance split: mid-range luminance ≈ 0.5 in normalized space
+    final highlightTintR =
+        (hlR - 0.5) * tintStr * 50.0; // Convert to 0-255 range
+    final highlightTintG = (hlG - 0.5) * tintStr * 50.0;
+    final highlightTintB = (hlB - 0.5) * tintStr * 50.0;
+
+    // ── BUILD MATRIX ──────────────────────────────────────────────
+    // Color matrix format: 5×4 (RGBA + offset for each output channel)
+    // [R, G, B, A, offset]
+    // Each row represents how to compute output Red/Green/Blue/Alpha
+
+    return ColorFilter.matrix(<double>[
+      // Red channel: apply all effects
+      redGammaFactor * contrastFactor * (satR + sat),
+      redGammaFactor * contrastFactor * satG,
+      redGammaFactor * contrastFactor * satB,
+      0,
+      contrastOffset + shadowLiftOffset + tempShift + highlightTintR,
+
+      // Green channel
+      greenGammaFactor * contrastFactor * satR,
+      greenGammaFactor * contrastFactor * (satG + sat),
+      greenGammaFactor * contrastFactor * satB,
+      0,
+      contrastOffset + shadowLiftOffset + tempShift * 0.1 + highlightTintG,
+
+      // Blue channel (inverted temp for cool shift)
+      blueGammaFactor * contrastFactor * satR,
+      blueGammaFactor * contrastFactor * satG,
+      blueGammaFactor * contrastFactor * (satB + sat),
+      0,
+      contrastOffset + shadowLiftOffset - tempShift + highlightTintB,
+
+      // Alpha channel (unchanged)
+      0, 0, 0, 1, 0,
+    ]);
   }
 }

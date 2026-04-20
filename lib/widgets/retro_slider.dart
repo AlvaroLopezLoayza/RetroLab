@@ -56,21 +56,45 @@ class RetroSlider extends StatelessWidget {
             ),
           ),
 
+          // (-) Button
+          GestureDetector(
+            onTap: () => onChanged((value - 0.01).clamp(min, max)),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.remove,
+                size: 14,
+                color: RetroColors.textSecondary,
+              ),
+            ),
+          ),
+
           // Slider
           Expanded(
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2,
-                thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 16),
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
               ),
               child: Slider(
                 value: value,
                 min: min,
                 max: max,
                 onChanged: onChanged,
+              ),
+            ),
+          ),
+
+          // (+) Button
+          GestureDetector(
+            onTap: () => onChanged((value + 0.01).clamp(min, max)),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.add,
+                size: 14,
+                color: RetroColors.textSecondary,
               ),
             ),
           ),

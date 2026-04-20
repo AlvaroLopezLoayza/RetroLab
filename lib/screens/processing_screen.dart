@@ -82,23 +82,20 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
 
   void _startFakeProgress() {
     int statusIndex = 0;
-    _progressTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _progressValue = (_progressValue + 0.15).clamp(0.0, 0.95);
+        if (statusIndex < _statuses.length - 1 &&
+            _progressValue > (statusIndex + 1) / _statuses.length) {
+          statusIndex++;
+          _statusText = _statuses[statusIndex];
         }
-        setState(() {
-          _progressValue = (_progressValue + 0.15).clamp(0.0, 0.95);
-          if (statusIndex < _statuses.length - 1 &&
-              _progressValue > (statusIndex + 1) / _statuses.length) {
-            statusIndex++;
-            _statusText = _statuses[statusIndex];
-          }
-        });
-      },
-    );
+      });
+    });
   }
 
   Future<void> _startProcessing() async {
@@ -159,17 +156,15 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
       // Navigate to preview
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => PreviewScreen(
-            photo: photo,
-            processedBytes: result.bytes,
-          ),
+          builder:
+              (_) => PreviewScreen(photo: photo, processedBytes: result.bytes),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Processing failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Processing failed: $e')));
       Navigator.of(context).pop();
     }
   }
@@ -245,9 +240,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: widget.filmStock.badgeColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(
-                      RetroDimens.radiusSm,
-                    ),
+                    borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
                     border: Border.all(
                       color: widget.filmStock.badgeColor.withValues(alpha: 0.3),
                     ),

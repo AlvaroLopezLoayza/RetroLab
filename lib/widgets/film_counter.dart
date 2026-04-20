@@ -13,11 +13,7 @@ class FilmCounter extends StatelessWidget {
   final int remaining;
   final int total;
 
-  const FilmCounter({
-    super.key,
-    required this.remaining,
-    required this.total,
-  });
+  const FilmCounter({super.key, required this.remaining, required this.total});
 
   @override
   Widget build(BuildContext context) {
@@ -30,9 +26,10 @@ class FilmCounter extends StatelessWidget {
         color: RetroColors.surface,
         borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
         border: Border.all(
-          color: isLow
-              ? RetroColors.error.withValues(alpha: 0.5)
-              : RetroColors.surfaceLight,
+          color:
+              isLow
+                  ? RetroColors.error.withValues(alpha: 0.5)
+                  : RetroColors.surfaceLight,
           width: 1,
         ),
       ),

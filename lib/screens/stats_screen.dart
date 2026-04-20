@@ -85,11 +85,11 @@ class StatsScreen extends StatelessWidget {
 
                 ...FilmStocks.all.map((stock) {
                   final count = usageMap[stock.id] ?? 0;
-                  final maxCount = usageMap.values.isEmpty
-                      ? 1
-                      : usageMap.values.reduce((a, b) => a > b ? a : b);
-                  final fraction =
-                      maxCount > 0 ? count / maxCount : 0.0;
+                  final maxCount =
+                      usageMap.values.isEmpty
+                          ? 1
+                          : usageMap.values.reduce((a, b) => a > b ? a : b);
+                  final fraction = maxCount > 0 ? count / maxCount : 0.0;
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 16),
@@ -189,10 +189,7 @@ class StatsScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
         border: Border.all(color: color.withValues(alpha: 0.3)),
         boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.1),
-            blurRadius: 12,
-          ),
+          BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 12),
         ],
       ),
       child: Column(

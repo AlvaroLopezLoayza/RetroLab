@@ -75,26 +75,26 @@ class RetroStrings {
   RetroStrings._();
 
   static const String appName = 'RetroLab';
-  static const String tagline = 'Analog Magic. Digital Soul.';
-  static const String watermark = 'Shot on RetroLab • 2026';
-  static const String developing = 'DEVELOPING...';
-  static const String filmFinished = 'FILM FINISHED';
-  static const String loadNewRoll = 'Load New Roll';
+  static const String tagline = 'Magia Analógica. Alma Digital.';
+  static const String watermark = 'Capturado con RetroLab • 2026';
+  static const String developing = 'REVELANDO...';
+  static const String filmFinished = 'ROLLO TERMINADO';
+  static const String loadNewRoll = 'Cargar Nuevo Rollo';
   static const String exposuresRemaining = 'EXP';
 
   // Onboarding
-  static const String onboardTitle1 = 'Welcome to the Lab';
+  static const String onboardTitle1 = 'Bienvenido al Laboratorio';
   static const String onboardBody1 =
-      'Every photo is a one-of-a-kind analog masterpiece. '
-      'No two shots are ever the same.';
-  static const String onboardTitle2 = 'Choose Your Film';
+      'Cada foto es una obra maestra analógica única. '
+      'Nunca habrá dos tomas iguales.';
+  static const String onboardTitle2 = 'Elige tu Película';
   static const String onboardBody2 =
-      '6 legendary film stocks — from Kodak Gold warmth '
-      'to Ilford B&W drama. Each roll tells a different story.';
-  static const String onboardTitle3 = 'More Than a Filter';
+      '6 películas legendarias — desde la calidez de Kodak Gold hasta '
+      'el dramatismo de Ilford B&N. Cada rollo cuenta una historia distinta.';
+  static const String onboardTitle3 = 'Más que un Filtro';
   static const String onboardBody3 =
-      'Real grain, real light leaks, real scratches. '
-      'Import any photo and make it timeless.';
+      'Grano, fugas de luz y rayas reales. '
+      'Importa cualquier foto y hazla atemporal.';
 }
 
 // ── Asset Paths ──────────────────────────────────────────────────────────────
@@ -127,8 +127,8 @@ class HiveBoxes {
 // ── Date Stamp Styles ────────────────────────────────────────────────────────
 
 enum DateStampStyle {
-  classic90s('Classic 90s'),
-  handwritten('Handwritten'),
+  classic90s('Clásico 90s'),
+  handwritten('Manuscrito'),
   polaroid('Polaroid');
 
   final String label;
@@ -136,9 +136,9 @@ enum DateStampStyle {
 }
 
 enum DateStampPosition {
-  bottomRight('Bottom Right'),
-  bottomLeft('Bottom Left'),
-  bottomCenter('Bottom Center');
+  bottomRight('Inferior Derecha'),
+  bottomLeft('Inferior Izquierda'),
+  bottomCenter('Inferior Centro');
 
   final String label;
   const DateStampPosition(this.label);

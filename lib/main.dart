@@ -18,19 +18,19 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Lock to portrait orientation for camera experience
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   // Set system UI style for a premium edge-to-edge experience
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    statusBarBrightness: Brightness.dark,
-    systemNavigationBarColor: Colors.transparent,
-    systemNavigationBarIconBrightness: Brightness.light,
-    systemNavigationBarContrastEnforced: false,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarContrastEnforced: false,
+    ),
+  );
 
   // Enable edge-to-edge mode
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -57,7 +57,6 @@ class _RetroLabAppState extends State<RetroLabApp> {
     _isDarkMode = HiveService.isDarkMode;
   }
 
-
   @override
   Widget build(BuildContext context) {
     final hasSeenOnboarding = HiveService.hasCompletedOnboarding;
@@ -66,9 +65,7 @@ class _RetroLabAppState extends State<RetroLabApp> {
       title: 'RetroLab',
       debugShowCheckedModeBanner: false,
       theme: _isDarkMode ? RetroTheme.dark : RetroTheme.light,
-      home: hasSeenOnboarding
-          ? const CameraScreen()
-          : const OnboardingScreen(),
+      home: hasSeenOnboarding ? const CameraScreen() : const OnboardingScreen(),
     );
   }
 }

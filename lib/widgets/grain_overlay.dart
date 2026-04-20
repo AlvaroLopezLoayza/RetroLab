@@ -14,11 +14,7 @@ class GrainOverlay extends StatefulWidget {
   final double opacity;
   final bool animate;
 
-  const GrainOverlay({
-    super.key,
-    this.opacity = 0.06,
-    this.animate = true,
-  });
+  const GrainOverlay({super.key, this.opacity = 0.06, this.animate = true});
 
   @override
   State<GrainOverlay> createState() => _GrainOverlayState();
@@ -84,10 +80,7 @@ class _GrainPainter extends CustomPainter {
       final brightness = random.nextInt(256);
       paint.color = Color.fromRGBO(brightness, brightness, brightness, opacity);
 
-      canvas.drawRect(
-        Rect.fromLTWH(x, y, 1.5, 1.5),
-        paint,
-      );
+      canvas.drawRect(Rect.fromLTWH(x, y, 1.5, 1.5), paint);
     }
   }
 

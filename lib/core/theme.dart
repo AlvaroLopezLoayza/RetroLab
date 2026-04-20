@@ -195,9 +195,10 @@ class RetroTheme {
   // ── Text Theme ───────────────────────────────────────────────────────────
 
   static TextTheme _buildTextTheme(Brightness brightness) {
-    final color = brightness == Brightness.dark
-        ? RetroColors.textPrimary
-        : RetroColors.lightTextPrimary;
+    final color =
+        brightness == Brightness.dark
+            ? RetroColors.textPrimary
+            : RetroColors.lightTextPrimary;
 
     return TextTheme(
       displayLarge: GoogleFonts.spaceMono(

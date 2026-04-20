@@ -35,8 +35,9 @@ class ImageDecodeException implements Exception {
 
 class ImageProcessingException implements Exception {
   final String message;
-  ImageProcessingException(
-      [this.message = 'Failed to process image capabilities']);
+  ImageProcessingException([
+    this.message = 'Failed to process image capabilities',
+  ]);
   @override
   String toString() => 'ImageProcessingException: $message';
 }
@@ -155,7 +156,8 @@ class ImageProcessor {
       }
 
       final file = File(
-          '${retroDir.path}/retro_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        '${retroDir.path}/retro_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
       await file.writeAsBytes(processedBytes);
 
       try {
@@ -208,9 +210,10 @@ class ImageProcessor {
 
     final effectiveGrain = grain ?? filmStock.baseGrain;
     // For B&W films (saturation = 0.0), always enforce B&W regardless of override
-    final effectiveSaturation = filmStock.saturation == 0.0
-        ? 0.0
-        : (saturationOverride ?? filmStock.saturation);
+    final effectiveSaturation =
+        filmStock.saturation == 0.0
+            ? 0.0
+            : (saturationOverride ?? filmStock.saturation);
     final effectiveVignette = vignette ?? filmStock.baseVignette;
 
     _applyFilmStockGrading(image, filmStock, effectiveSaturation);
@@ -319,9 +322,12 @@ class ImageProcessor {
         if (stock.contrast != 0) {
           // Map contrast to the standard factor range
           final c = stock.contrast.clamp(-1.0, 1.0);
-          final factor = (c > 0)
-              ? 1.0 + c * 2.0 // Positive contrast: up to 3× stretch
-              : 1.0 + c; // Negative contrast: down to 0 (flat)
+          final factor =
+              (c > 0)
+                  ? 1.0 +
+                      c *
+                          2.0 // Positive contrast: up to 3× stretch
+                  : 1.0 + c; // Negative contrast: down to 0 (flat)
           r = (factor * (r - 128) + 128).clamp(0.0, 255.0);
           g = (factor * (g - 128) + 128).clamp(0.0, 255.0);
           b = (factor * (b - 128) + 128).clamp(0.0, 255.0);
@@ -362,13 +368,16 @@ class ImageProcessor {
           final capHlG = (hlG * 240.0);
           final capHlB = (hlB * 240.0);
 
-          r = r +
+          r =
+              r +
               (capHlR - r) * highlightMask * ts * 0.4 +
               (shR * 255 - r) * shadowMask * ts * 0.25;
-          g = g +
+          g =
+              g +
               (capHlG - g) * highlightMask * ts * 0.4 +
               (shG * 255 - g) * shadowMask * ts * 0.25;
-          b = b +
+          b =
+              b +
               (capHlB - b) * highlightMask * ts * 0.4 +
               (shB * 255 - b) * shadowMask * ts * 0.25;
         }
@@ -383,7 +392,7 @@ class ImageProcessor {
           g = g * (1.0 - lift) + 255 * lift;
           b = b * (1.0 - lift) + 255 * lift;
         }
- 
+
         // ── Soft-Knee Tone Mapping (primary burn fix) ─────────────────
         pixel.r = toneLUT[r.round().clamp(0, 300)];
         pixel.g = toneLUT[g.round().clamp(0, 300)];
@@ -421,7 +430,10 @@ class ImageProcessor {
   // ═══════════════════════════════════════════════════════════════════════════
 
   static void _applyProceduralGrain(
-      img.Image image, double intensity, bool colored) {
+    img.Image image,
+    double intensity,
+    bool colored,
+  ) {
     // FIX: Reduce max noise from 60 → 45 and clamp per-pixel by luminance
     // so shadow grain stays visible but bright areas aren't pushed to white.
     final maxNoise = (intensity * 45).round();
@@ -430,7 +442,8 @@ class ImageProcessor {
     for (int y = 0; y < image.height; y++) {
       for (int x = 0; x < image.width; x++) {
         final pixel = image.getPixel(x, y);
-        final luminance = (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b) / 255.0;
+        final luminance =
+            (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b) / 255.0;
 
         // Grain intensity scales down in highlights (realistic film behaviour)
         final grainScale = 1.0 - (luminance * 0.5);
@@ -485,7 +498,9 @@ class ImageProcessor {
   // ═══════════════════════════════════════════════════════════════════════════
 
   static void _applyProceduralAnalogRandomness(
-      img.Image image, FilmStock stock) {
+    img.Image image,
+    FilmStock stock,
+  ) {
     final roll = _random.nextDouble();
     if (roll < 0.3) {
       _applyLightStreak(image);
@@ -499,16 +514,16 @@ class ImageProcessor {
   static void _applyLightStreak(img.Image image) {
     final y0 = _random.nextInt(image.height);
     final bandHeight = 20 + _random.nextInt(40);
-    final streakColor = [
-      [255, 180, 50],
-      [255, 220, 100],
-      [255, 130, 80],
-      [200, 180, 255],
-    ][_random.nextInt(4)];
+    final streakColor =
+        [
+          [255, 180, 50],
+          [255, 220, 100],
+          [255, 130, 80],
+          [200, 180, 255],
+        ][_random.nextInt(4)];
 
     for (int y = y0; y < min(y0 + bandHeight, image.height); y++) {
-      final distFromCenter =
-          (y - y0 - bandHeight / 2).abs() / (bandHeight / 2);
+      final distFromCenter = (y - y0 - bandHeight / 2).abs() / (bandHeight / 2);
       // FIX: Reduced max opacity from 0.15 → 0.10 so streaks are subtler
       final opacity = (1.0 - distFromCenter) * 0.10;
 
@@ -553,15 +568,18 @@ class ImageProcessor {
         final opacity = (1.0 - i / bandWidth) * 0.12;
 
         final pixel = image.getPixel(x, y);
-        pixel.r = (pixel.r + (255 - pixel.r.toInt()) * opacity)
-            .round()
-            .clamp(0, 255);
-        pixel.g = (pixel.g + (255 - pixel.g.toInt()) * opacity)
-            .round()
-            .clamp(0, 255);
-        pixel.b = (pixel.b + (255 - pixel.b.toInt()) * opacity)
-            .round()
-            .clamp(0, 255);
+        pixel.r = (pixel.r + (255 - pixel.r.toInt()) * opacity).round().clamp(
+          0,
+          255,
+        );
+        pixel.g = (pixel.g + (255 - pixel.g.toInt()) * opacity).round().clamp(
+          0,
+          255,
+        );
+        pixel.b = (pixel.b + (255 - pixel.b.toInt()) * opacity).round().clamp(
+          0,
+          255,
+        );
       }
     }
   }
@@ -602,8 +620,14 @@ class ImageProcessor {
         stampColor = img.ColorRgb8(240, 240, 240);
     }
 
-    img.drawString(image, dateStr,
-        font: img.arial24, x: x, y: y, color: stampColor);
+    img.drawString(
+      image,
+      dateStr,
+      font: img.arial24,
+      x: x,
+      y: y,
+      color: stampColor,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -614,14 +638,21 @@ class ImageProcessor {
   ///
   /// [screenBlend] — true = Screen (light leaks/dust), false = Multiply (grain).
   static void _applyTextureOverlay(
-      img.Image image, Uint8List bytes, double strength, bool screenBlend) {
+    img.Image image,
+    Uint8List bytes,
+    double strength,
+    bool screenBlend,
+  ) {
     if (strength <= 0) return;
 
     final overlayImage = img.decodeImage(bytes);
     if (overlayImage == null) return;
 
-    final resizedOverlay =
-        img.copyResize(overlayImage, width: image.width, height: image.height);
+    final resizedOverlay = img.copyResize(
+      overlayImage,
+      width: image.width,
+      height: image.height,
+    );
 
     for (int y = 0; y < image.height; y++) {
       for (int x = 0; x < image.width; x++) {
@@ -664,7 +695,10 @@ class ImageProcessor {
   // EXPORT HELPERS  (unchanged)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  static Future<File> createPolaroidFrame(File imageFile, {String? filterName}) async {
+  static Future<File> createPolaroidFrame(
+    File imageFile, {
+    String? filterName,
+  }) async {
     final bytes = await imageFile.readAsBytes();
     final original = img.decodeImage(bytes);
     if (original == null) throw Exception('Failed to decode image');
@@ -730,18 +764,22 @@ class ImageProcessor {
     img.fill(strip, color: img.ColorRgb8(30, 25, 20));
 
     for (int i = 0; i < totalWidth; i += 24) {
-      img.fillRect(strip,
-          x1: i + 4,
-          y1: 3,
-          x2: i + 14,
-          y2: sprocketSize - 3,
-          color: img.ColorRgb8(15, 12, 10));
-      img.fillRect(strip,
-          x1: i + 4,
-          y1: totalHeight - sprocketSize + 3,
-          x2: i + 14,
-          y2: totalHeight - 3,
-          color: img.ColorRgb8(15, 12, 10));
+      img.fillRect(
+        strip,
+        x1: i + 4,
+        y1: 3,
+        x2: i + 14,
+        y2: sprocketSize - 3,
+        color: img.ColorRgb8(15, 12, 10),
+      );
+      img.fillRect(
+        strip,
+        x1: i + 4,
+        y1: totalHeight - sprocketSize + 3,
+        x2: i + 14,
+        y2: totalHeight - 3,
+        color: img.ColorRgb8(15, 12, 10),
+      );
     }
 
     for (int i = 0; i < photos.length; i++) {

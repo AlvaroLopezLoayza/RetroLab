@@ -117,9 +117,10 @@ class ViewfinderOverlay extends StatelessWidget {
                             style: GoogleFonts.spaceMono(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
-                              color: remainingExposures <= 5
-                                  ? RetroColors.error
-                                  : RetroColors.dateYellow,
+                              color:
+                                  remainingExposures <= 5
+                                      ? RetroColors.error
+                                      : RetroColors.dateYellow,
                             ),
                           ),
                           const SizedBox(width: 4),
@@ -206,9 +207,7 @@ class ViewfinderOverlay extends StatelessWidget {
   }
 
   Widget _buildGrid() {
-    return Positioned.fill(
-      child: CustomPaint(painter: _GridPainter()),
-    );
+    return Positioned.fill(child: CustomPaint(painter: _GridPainter()));
   }
 }
 
@@ -227,10 +226,11 @@ class _BracketPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color.withValues(alpha: 0.5)
-      ..strokeWidth = thickness
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color = color.withValues(alpha: 0.5)
+          ..strokeWidth = thickness
+          ..style = PaintingStyle.stroke;
 
     final path = Path();
     if (top && left) {
@@ -260,9 +260,10 @@ class _BracketPainter extends CustomPainter {
 class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.12)
-      ..strokeWidth = 0.5;
+    final paint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.12)
+          ..strokeWidth = 0.5;
 
     // Rule of thirds
     canvas.drawLine(

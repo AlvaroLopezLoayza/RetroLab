@@ -41,9 +41,10 @@ class FilmRoll {
       totalExposures: map['totalExposures'] as int? ?? 36,
       usedExposures: map['usedExposures'] as int? ?? 0,
       loadedAt: DateTime.parse(map['loadedAt'] as String),
-      finishedAt: map['finishedAt'] != null
-          ? DateTime.parse(map['finishedAt'] as String)
-          : null,
+      finishedAt:
+          map['finishedAt'] != null
+              ? DateTime.parse(map['finishedAt'] as String)
+              : null,
       photoIds: List<String>.from(map['photoIds'] as List? ?? []),
     );
   }
@@ -72,6 +73,27 @@ class FilmRoll {
       loadedAt: loadedAt,
       finishedAt: newUsed >= totalExposures ? DateTime.now() : null,
       photoIds: [...photoIds, photoId],
+    );
+  }
+
+  /// Create a copy of the FilmRoll with updated fields.
+  FilmRoll copyWith({
+    String? id,
+    String? filmStockId,
+    int? totalExposures,
+    int? usedExposures,
+    DateTime? loadedAt,
+    DateTime? finishedAt,
+    List<String>? photoIds,
+  }) {
+    return FilmRoll(
+      id: id ?? this.id,
+      filmStockId: filmStockId ?? this.filmStockId,
+      totalExposures: totalExposures ?? this.totalExposures,
+      usedExposures: usedExposures ?? this.usedExposures,
+      loadedAt: loadedAt ?? this.loadedAt,
+      finishedAt: finishedAt ?? this.finishedAt,
+      photoIds: photoIds ?? this.photoIds,
     );
   }
 }

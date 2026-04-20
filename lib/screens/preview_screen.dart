@@ -55,10 +55,9 @@ class _PreviewScreenState extends State<PreviewScreen>
   }
 
   void _shareImage() {
-    Share.shareXFiles(
-      [XFile(widget.photo.processedPath)],
-      text: RetroStrings.watermark,
-    );
+    Share.shareXFiles([
+      XFile(widget.photo.processedPath),
+    ], text: RetroStrings.watermark);
   }
 
   Future<void> _shareAsPolaroid() async {
@@ -68,23 +67,20 @@ class _PreviewScreenState extends State<PreviewScreen>
         File(widget.photo.processedPath),
         filterName: filmStock.name,
       );
-      Share.shareXFiles(
-        [XFile(polaroidFile.path)],
-        text: RetroStrings.watermark,
-      );
+      Share.shareXFiles([
+        XFile(polaroidFile.path),
+      ], text: RetroStrings.watermark);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error creating Polaroid: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error creating Polaroid: $e')));
     }
   }
 
   void _openEditor() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => EditorScreen(photo: widget.photo),
-      ),
+      MaterialPageRoute(builder: (_) => EditorScreen(photo: widget.photo)),
     );
   }
 
@@ -109,9 +105,7 @@ class _PreviewScreenState extends State<PreviewScreen>
                   child: Container(
                     margin: const EdgeInsets.all(RetroDimens.paddingMd),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(
-                        RetroDimens.radiusSm,
-                      ),
+                      borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.5),
@@ -121,9 +115,7 @@ class _PreviewScreenState extends State<PreviewScreen>
                       ],
                     ),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(
-                        RetroDimens.radiusSm,
-                      ),
+                      borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
                       child: Image.memory(
                         widget.processedBytes,
                         fit: BoxFit.contain,
@@ -162,9 +154,10 @@ class _PreviewScreenState extends State<PreviewScreen>
                     child: Row(
                       children: [
                         IconButton(
-                          onPressed: () => Navigator.of(context).popUntil(
-                            (route) => route.isFirst,
-                          ),
+                          onPressed:
+                              () => Navigator.of(
+                                context,
+                              ).popUntil((route) => route.isFirst),
                           icon: const Icon(
                             Icons.close,
                             color: RetroColors.textPrimary,
@@ -229,16 +222,8 @@ class _PreviewScreenState extends State<PreviewScreen>
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _actionButton(
-                              Icons.edit,
-                              'EDIT',
-                              _openEditor,
-                            ),
-                            _actionButton(
-                              Icons.share,
-                              'SHARE',
-                              _shareImage,
-                            ),
+                            _actionButton(Icons.edit, 'EDIT', _openEditor),
+                            _actionButton(Icons.share, 'SHARE', _shareImage),
                             _actionButton(
                               Icons.photo_size_select_actual,
                               'POLAROID',
@@ -247,9 +232,9 @@ class _PreviewScreenState extends State<PreviewScreen>
                             _actionButton(
                               Icons.done,
                               'DONE',
-                              () => Navigator.of(context).popUntil(
-                                (route) => route.isFirst,
-                              ),
+                              () => Navigator.of(
+                                context,
+                              ).popUntil((route) => route.isFirst),
                             ),
                           ],
                         ),
@@ -276,10 +261,7 @@ class _PreviewScreenState extends State<PreviewScreen>
             decoration: BoxDecoration(
               color: RetroColors.surface,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: RetroColors.surfaceLight,
-                width: 1,
-              ),
+              border: Border.all(color: RetroColors.surfaceLight, width: 1),
             ),
             child: Icon(icon, size: 22, color: RetroColors.textPrimary),
           ),

@@ -70,53 +70,57 @@ class _LabScreenState extends State<LabScreen>
     if (photos.isEmpty) return;
 
     try {
-      final files = photos
-          .map((p) => File(p.processedPath))
-          .where((f) => f.existsSync())
-          .toList();
+      final files =
+          photos
+              .map((p) => File(p.processedPath))
+              .where((f) => f.existsSync())
+              .toList();
 
       if (files.isEmpty) return;
 
-      final stripFile = await ImageProcessor.createFilmStrip(files.take(12).toList());
+      final stripFile = await ImageProcessor.createFilmStrip(
+        files.take(12).toList(),
+      );
       Share.shareXFiles([XFile(stripFile.path)], text: RetroStrings.watermark);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
   }
 
   void _deletePhoto(RetroPhoto photo) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Delete Photo?',
-          style: GoogleFonts.spaceMono(color: RetroColors.textPrimary),
-        ),
-        content: Text(
-          'This action cannot be undone.',
-          style: GoogleFonts.inter(color: RetroColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('CANCEL'),
-          ),
-          TextButton(
-            onPressed: () {
-              HiveService.photosBox.delete(photo.id);
-              _loadPhotos();
-              Navigator.pop(ctx);
-            },
-            child: Text(
-              'DELETE',
-              style: GoogleFonts.spaceMono(color: RetroColors.error),
+      builder:
+          (ctx) => AlertDialog(
+            title: Text(
+              'Delete Photo?',
+              style: GoogleFonts.spaceMono(color: RetroColors.textPrimary),
             ),
+            content: Text(
+              'This action cannot be undone.',
+              style: GoogleFonts.inter(color: RetroColors.textSecondary),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('CANCEL'),
+              ),
+              TextButton(
+                onPressed: () {
+                  HiveService.photosBox.delete(photo.id);
+                  _loadPhotos();
+                  Navigator.pop(ctx);
+                },
+                child: Text(
+                  'DELETE',
+                  style: GoogleFonts.spaceMono(color: RetroColors.error),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -134,8 +138,8 @@ class _LabScreenState extends State<LabScreen>
                   ? Icons.grid_view_rounded
                   : Icons.view_column_rounded,
             ),
-            onPressed: () =>
-                setState(() => _isFilmStripView = !_isFilmStripView),
+            onPressed:
+                () => setState(() => _isFilmStripView = !_isFilmStripView),
             tooltip: _isFilmStripView ? 'Grid View' : 'Film Strip View',
           ),
           // Export strip
@@ -147,10 +151,11 @@ class _LabScreenState extends State<LabScreen>
           // Stats
           IconButton(
             icon: const Icon(Icons.bar_chart),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const StatsScreen()),
-            ),
+            onPressed:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const StatsScreen()),
+                ),
             tooltip: 'Stats',
           ),
         ],
@@ -166,8 +171,8 @@ class _LabScreenState extends State<LabScreen>
           _filteredPhotos.isEmpty
               ? _buildEmptyState()
               : _isFilmStripView
-                  ? _buildFilmStripView()
-                  : _buildGridView(),
+              ? _buildFilmStripView()
+              : _buildGridView(),
         ],
       ),
     );
@@ -200,14 +205,16 @@ class _LabScreenState extends State<LabScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: isSelected
-                ? (color ?? RetroColors.accent).withValues(alpha: 0.2)
-                : RetroColors.surface,
+            color:
+                isSelected
+                    ? (color ?? RetroColors.accent).withValues(alpha: 0.2)
+                    : RetroColors.surface,
             borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
             border: Border.all(
-              color: isSelected
-                  ? (color ?? RetroColors.accent)
-                  : RetroColors.surfaceLight,
+              color:
+                  isSelected
+                      ? (color ?? RetroColors.accent)
+                      : RetroColors.surfaceLight,
             ),
           ),
           child: Text(
@@ -215,9 +222,10 @@ class _LabScreenState extends State<LabScreen>
             style: GoogleFonts.spaceMono(
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              color: isSelected
-                  ? (color ?? RetroColors.accent)
-                  : RetroColors.textMuted,
+              color:
+                  isSelected
+                      ? (color ?? RetroColors.accent)
+                      : RetroColors.textMuted,
               letterSpacing: 0.5,
             ),
           ),
@@ -252,15 +260,21 @@ class _LabScreenState extends State<LabScreen>
               // Photo thumbnail
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: file.existsSync()
-                    ? Image.file(file, fit: BoxFit.cover, cacheWidth: 300, cacheHeight: 300)
-                    : Container(
-                        color: RetroColors.surface,
-                        child: const Icon(
-                          Icons.broken_image,
-                          color: RetroColors.textMuted,
+                child:
+                    file.existsSync()
+                        ? Image.file(
+                          file,
+                          fit: BoxFit.cover,
+                          cacheWidth: 300,
+                          cacheHeight: 300,
+                        )
+                        : Container(
+                          color: RetroColors.surface,
+                          child: const Icon(
+                            Icons.broken_image,
+                            color: RetroColors.textMuted,
+                          ),
                         ),
-                      ),
               ),
               // Film stock badge
               Positioned(
@@ -327,9 +341,14 @@ class _LabScreenState extends State<LabScreen>
                         width: 2,
                       ),
                     ),
-                    child: file.existsSync()
-                        ? Image.file(file, fit: BoxFit.cover, cacheHeight: 400)
-                        : Container(color: RetroColors.surface),
+                    child:
+                        file.existsSync()
+                            ? Image.file(
+                              file,
+                              fit: BoxFit.cover,
+                              cacheHeight: 400,
+                            )
+                            : Container(color: RetroColors.surface),
                   ),
                 );
               },
@@ -349,15 +368,16 @@ class _LabScreenState extends State<LabScreen>
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: 50,
-        itemBuilder: (_, __) => Container(
-          width: 10,
-          height: 14,
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0D0A08),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
+        itemBuilder:
+            (_, __) => Container(
+              width: 10,
+              height: 14,
+              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D0A08),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
       ),
     );
   }
@@ -376,7 +396,7 @@ class _LabScreenState extends State<LabScreen>
           ),
           const SizedBox(height: 20),
           Text(
-            'No photos yet',
+            'AÚN NO HAY FOTOS',
             style: GoogleFonts.spaceMono(
               fontSize: 16,
               color: RetroColors.textMuted,
@@ -385,7 +405,7 @@ class _LabScreenState extends State<LabScreen>
           ),
           const SizedBox(height: 8),
           Text(
-            'Start shooting to fill your lab!',
+            'Toma algunas fotos para ver crecer tu galería.',
             style: GoogleFonts.inter(
               fontSize: 14,
               color: RetroColors.textMuted.withValues(alpha: 0.6),
@@ -404,38 +424,39 @@ class _LabScreenState extends State<LabScreen>
 
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
-              child: Image.file(file, fit: BoxFit.contain),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+      builder:
+          (ctx) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                _detailAction(Icons.share, 'Share', () {
-                  Share.shareXFiles([XFile(photo.processedPath)]);
-                  Navigator.pop(ctx);
-                }),
-                const SizedBox(width: 24),
-                _detailAction(Icons.delete_outline, 'Delete', () {
-                  Navigator.pop(ctx);
-                  _deletePhoto(photo);
-                }),
-                const SizedBox(width: 24),
-                _detailAction(Icons.close, 'Close', () {
-                  Navigator.pop(ctx);
-                }),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+                  child: Image.file(file, fit: BoxFit.contain),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _detailAction(Icons.share, 'Compartir', () {
+                      Share.shareXFiles([XFile(photo.processedPath)]);
+                      Navigator.pop(ctx);
+                    }),
+                    const SizedBox(width: 24),
+                    _detailAction(Icons.delete_outline, 'Borrar', () {
+                      Navigator.pop(ctx);
+                      _deletePhoto(photo);
+                    }),
+                    const SizedBox(width: 24),
+                    _detailAction(Icons.close, 'Cerrar', () {
+                      Navigator.pop(ctx);
+                    }),
+                  ],
+                ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 

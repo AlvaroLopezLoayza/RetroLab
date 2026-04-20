@@ -45,8 +45,7 @@ class HiveService {
       settingsBox.put('analog_randomness', value);
 
   static String get dateStampStyle =>
-      settingsBox.get('date_stamp_style', defaultValue: 'classic90s')
-          as String;
+      settingsBox.get('date_stamp_style', defaultValue: 'classic90s') as String;
 
   static Future<void> setDateStampStyle(String value) async =>
       settingsBox.put('date_stamp_style', value);
@@ -83,8 +82,9 @@ class HiveService {
 
   /// Update favorite stock based on most used.
   static Future<void> recordStockUsage(String stockId) async {
-    final Map usageMap =
-        Map<String, int>.from(statsBox.get('stock_usage', defaultValue: {}) as Map);
+    final Map usageMap = Map<String, int>.from(
+      statsBox.get('stock_usage', defaultValue: {}) as Map,
+    );
     usageMap[stockId] = ((usageMap[stockId] as int?) ?? 0) + 1;
     await statsBox.put('stock_usage', usageMap);
 

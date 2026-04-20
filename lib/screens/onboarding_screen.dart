@@ -58,9 +58,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _completeOnboarding() {
     HiveService.setOnboardingComplete();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const CameraScreen()),
-    );
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => const CameraScreen()));
   }
 
   @override
@@ -110,9 +110,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           width: i == _currentPage ? 28 : 8,
                           height: 8,
                           decoration: BoxDecoration(
-                            color: i == _currentPage
-                                ? RetroColors.accent
-                                : RetroColors.surfaceLight,
+                            color:
+                                i == _currentPage
+                                    ? RetroColors.accent
+                                    : RetroColors.surfaceLight,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         );

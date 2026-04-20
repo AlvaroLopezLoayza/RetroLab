@@ -106,17 +106,18 @@ class _EditorScreenState extends State<EditorScreen> {
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => PreviewScreen(
-            photo: updatedPhoto,
-            processedBytes: result.bytes,
-          ),
+          builder:
+              (_) => PreviewScreen(
+                photo: updatedPhoto,
+                processedBytes: result.bytes,
+              ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Reprocess failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Reprocess failed: $e')));
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -298,31 +299,29 @@ class _EditorScreenState extends State<EditorScreen> {
   ) {
     return Wrap(
       spacing: 8,
-      children: values.map((value) {
-        final isSelected = value == selected;
-        return ChoiceChip(
-          label: Text(
-            labelGetter(value),
-            style: GoogleFonts.spaceMono(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: isSelected
-                  ? Colors.white
-                  : RetroColors.textSecondary,
-            ),
-          ),
-          selected: isSelected,
-          onSelected: (_) => onSelected(value),
-          selectedColor: RetroColors.accent,
-          backgroundColor: RetroColors.surface,
-          side: BorderSide(
-            color: isSelected
-                ? RetroColors.accent
-                : RetroColors.surfaceLight,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        );
-      }).toList(),
+      children:
+          values.map((value) {
+            final isSelected = value == selected;
+            return ChoiceChip(
+              label: Text(
+                labelGetter(value),
+                style: GoogleFonts.spaceMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.white : RetroColors.textSecondary,
+                ),
+              ),
+              selected: isSelected,
+              onSelected: (_) => onSelected(value),
+              selectedColor: RetroColors.accent,
+              backgroundColor: RetroColors.surface,
+              side: BorderSide(
+                color:
+                    isSelected ? RetroColors.accent : RetroColors.surfaceLight,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            );
+          }).toList(),
     );
   }
 }

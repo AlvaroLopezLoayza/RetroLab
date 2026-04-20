@@ -191,15 +191,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           color: RetroColors.textPrimary,
         ),
       ),
-      subtitle: subtitle != null
-          ? Text(
-              subtitle,
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                color: RetroColors.textMuted,
-              ),
-            )
-          : null,
+      subtitle:
+          subtitle != null
+              ? Text(
+                subtitle,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: RetroColors.textMuted,
+                ),
+              )
+              : null,
       trailing: trailing,
     );
   }
@@ -239,14 +240,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           fontSize: 11,
           color: RetroColors.textSecondary,
         ),
-        items: items
-            .map(
-              (item) => DropdownMenuItem<T>(
-                value: item,
-                child: Text(labelGetter(item)),
-              ),
-            )
-            .toList(),
+        items:
+            items
+                .map(
+                  (item) => DropdownMenuItem<T>(
+                    value: item,
+                    child: Text(labelGetter(item)),
+                  ),
+                )
+                .toList(),
         onChanged: onChanged,
       ),
     );

@@ -38,12 +38,14 @@ class _ShutterButtonState extends State<ShutterButton>
       vsync: this,
       duration: const Duration(milliseconds: 150),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.88).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-    _glowAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.88,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _glowAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -86,8 +88,9 @@ class _ShutterButtonState extends State<ShutterButton>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: RetroColors.accent
-                        .withValues(alpha: 0.3 + _glowAnimation.value * 0.4),
+                    color: RetroColors.accent.withValues(
+                      alpha: 0.3 + _glowAnimation.value * 0.4,
+                    ),
                     blurRadius: 16 + _glowAnimation.value * 20,
                     spreadRadius: _glowAnimation.value * 4,
                   ),
@@ -103,9 +106,10 @@ class _ShutterButtonState extends State<ShutterButton>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: widget.enabled
-                            ? RetroColors.accent
-                            : RetroColors.textMuted,
+                        color:
+                            widget.enabled
+                                ? RetroColors.accent
+                                : RetroColors.textMuted,
                         width: 4,
                       ),
                     ),
@@ -116,19 +120,21 @@ class _ShutterButtonState extends State<ShutterButton>
                     height: widget.size * 0.75,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: widget.enabled
-                          ? RetroColors.accent
-                          : RetroColors.textMuted,
-                      gradient: widget.enabled
-                          ? const RadialGradient(
-                              colors: [
-                                RetroColors.accentLight,
-                                RetroColors.accent,
-                                RetroColors.accentDark,
-                              ],
-                              stops: [0.0, 0.5, 1.0],
-                            )
-                          : null,
+                      color:
+                          widget.enabled
+                              ? RetroColors.accent
+                              : RetroColors.textMuted,
+                      gradient:
+                          widget.enabled
+                              ? const RadialGradient(
+                                colors: [
+                                  RetroColors.accentLight,
+                                  RetroColors.accent,
+                                  RetroColors.accentDark,
+                                ],
+                                stops: [0.0, 0.5, 1.0],
+                              )
+                              : null,
                     ),
                   ),
                   // Center dot (aperture feel)
