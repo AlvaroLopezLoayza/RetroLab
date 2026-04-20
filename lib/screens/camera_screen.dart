@@ -17,6 +17,7 @@ library;
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
@@ -91,6 +92,15 @@ class _CameraScreenState extends State<CameraScreen>
   late final AnimationController _focusAnimController;
   late final Animation<double> _focusScaleAnim;
   late final Animation<double> _focusOpacityAnim;
+
+  // ── Texture Cache (WYSIWYG Preview) ────────────────────────────────────
+  // Pre-decoded ui.Image objects for real-time overlay rendering.
+  // Stored as ui.Image (not raw bytes) to avoid expensive decoding on every paint.
+  ui.Image? _cachedLeakImage;
+  ui.Image? _cachedDustImage;
+  ui.Image? _cachedScratchImage;
+  int _currentLeakIndex = 0; // Deterministic light leak selection per stock
+  bool _texturesLoading = false; // Prevent multiple simultaneous loads
 
   @override
   void initState() {
@@ -290,6 +300,94 @@ class _CameraScreenState extends State<CameraScreen>
       _dustStrength = 0.0;
       _scratchLevel = 0.0;
     });
+    // Load textures asynchronously for WYSIWYG preview
+    _loadPreviewTextures();
+  }
+
+  /// Load texture assets for preview overlays asynchronously.
+  /// Decodes PNG bytes directly to ui.Image objects for instant canvas rendering.
+  /// Called when film stock changes to show accurate textures for the new stock.
+  Future<void> _loadPreviewTextures() async {
+    if (_texturesLoading) return;
+    _texturesLoading = true;
+
+    try {
+      // Deterministically select a light leak based on film stock ID
+      _currentLeakIndex = _selectedStock.id.hashCode.abs() % 42;
+
+      // Load and decode light leak texture
+      try {
+        final leakData =
+            await rootBundle.load(RetroAssets.lightLeak(_currentLeakIndex));
+        final codec =
+            await ui.instantiateImageCodec(leakData.buffer.asUint8List());
+        final frame = await codec.getNextFrame();
+        if (mounted) {
+          setState(() {
+            _cachedLeakImage = frame.image;
+          });
+        }
+      } catch (e) {
+        debugPrint('[RetroLab] Leak texture load failed: $e');
+        _cachedLeakImage = null;
+      }
+
+      // Load and decode dust texture
+      try {
+        final dustData = await rootBundle.load(RetroAssets.textureDust);
+        final codec =
+            await ui.instantiateImageCodec(dustData.buffer.asUint8List());
+        final frame = await codec.getNextFrame();
+        if (mounted) {
+          setState(() {
+            _cachedDustImage = frame.image;
+          });
+        }
+      } catch (e) {
+        debugPrint('[RetroLab] Dust texture load failed: $e');
+        _cachedDustImage = null;
+      }
+
+      // Load and decode scratch texture
+      try {
+        final scratchData =
+            await rootBundle.load(RetroAssets.textureScratch);
+        final codec =
+            await ui.instantiateImageCodec(scratchData.buffer.asUint8List());
+        final frame = await codec.getNextFrame();
+        if (mounted) {
+          setState(() {
+            _cachedScratchImage = frame.image;
+          });
+        }
+      } catch (e) {
+        debugPrint('[RetroLab] Scratch texture load failed: $e');
+        _cachedScratchImage = null;
+      }
+    } finally {
+      _texturesLoading = false;
+    }
+  }
+
+  /// Composites a pre-decoded ui.Image over the camera preview.
+  /// Replicates the Screen or Multiply blending used in the processor.
+  ///
+  /// Parameters:
+  ///   - textureImage: Pre-decoded ui.Image (for performance)
+  ///   - strength: Opacity factor (0.0-1.0)
+  ///   - screenBlend: true = Screen (light overlays), false = Multiply (grain/scratches)
+  Widget _buildTextureOverlay(
+    ui.Image textureImage,
+    double strength, {
+    bool screenBlend = true,
+  }) {
+    return CustomPaint(
+      painter: _TextureOverlayPainter(
+        textureImage: textureImage,
+        strength: strength,
+        screenBlend: screenBlend,
+      ),
+    );
   }
 
   /// Handle tap-to-focus on the camera preview.
@@ -604,40 +702,67 @@ class _CameraScreenState extends State<CameraScreen>
               ),
             ),
 
-          // ── Light Leak Preview ─────────────────────────────────────────
-          // FIX: _leakStrength had NO visual representation in the preview.
-          // Now shows an animated edge color wash that mimics the leak PNG
-          // applied by the processor, driven by the slider value.
+          // ── Light Leak Texture Overlay ──────────────────────────────────
+          // Shows the actual light leak PNG asset with Screen blending.
+          // If texture not available, falls back to animated color wash.
           if (_leakStrength > 0)
             Positioned.fill(
               child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _leakAnim,
-                  builder: (_, __) => _buildLeakPreviewOverlay(
-                    _selectedStock,
-                    _leakStrength * _leakAnim.value,
-                  ),
-                ),
+                child: _cachedLeakImage != null
+                    ? AnimatedBuilder(
+                        animation: _leakAnim,
+                        builder: (_, __) => _buildTextureOverlay(
+                          _cachedLeakImage!,
+                          _leakStrength * _leakAnim.value,
+                          screenBlend: true,
+                        ),
+                      )
+                    : AnimatedBuilder(
+                        animation: _leakAnim,
+                        builder: (_, __) => _buildLeakPreviewOverlay(
+                          _selectedStock,
+                          _leakStrength * _leakAnim.value,
+                        ),
+                      ),
               ),
             ),
 
-          // ── Scratch / Scanline Overlay ─────────────────────────────────
-          // FIX: _scratchLevel had NO visual representation in the preview.
-          // Shows a subtle scanline noise overlay scaled by the slider.
+          // ── Scratch Texture Overlay ──────────────────────────────────────
+          // Uses actual scratch texture asset if available, otherwise falls back
+          // to procedural scanlines. Blended with Multiply for authentic look.
           if (_scratchLevel > 0)
             Positioned.fill(
               child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _ScratchPreviewPainter(
-                    intensity: _scratchLevel,
-                    seed: 42,
-                  ),
+                child: _cachedScratchImage != null
+                    ? _buildTextureOverlay(
+                        _cachedScratchImage!,
+                        _scratchLevel,
+                        screenBlend: false,
+                      )
+                    : CustomPaint(
+                        painter: _ScratchPreviewPainter(
+                          intensity: _scratchLevel,
+                          seed: 42,
+                        ),
+                      ),
+              ),
+            ),
+
+          // ── Dust Texture Overlay (before vignette) ──────────────────────
+          // Screen-blended dust particles matching processor output.
+          if (_dustStrength > 0 && _cachedDustImage != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: _buildTextureOverlay(
+                  _cachedDustImage!,
+                  _dustStrength,
+                  screenBlend: true,
                 ),
               ),
             ),
 
           // ── Vignette & Tint Overlay ────────────────────────────────────
-          // Unchanged — already uses _vignette correctly.
+          // Radial gradient overlay that darkens edges and applies color tints.
           Positioned.fill(
             child: IgnorePointer(
               child: Container(
@@ -1196,4 +1321,63 @@ class _ScratchPreviewPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ScratchPreviewPainter old) =>
       old.intensity != intensity || old.seed != seed;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEXTURE OVERLAY PAINTER
+//
+// Fast Canvas-based rendering of pre-decoded ui.Image textures with proper
+// blend modes. Eliminates expensive per-frame PNG decoding and image conversions.
+// ─────────────────────────────────────────────────────────────────────────────
+class _TextureOverlayPainter extends CustomPainter {
+  final ui.Image textureImage; // Pre-decoded ui.Image from cache
+  final double strength; // Opacity factor (0.0-1.0)
+  final bool screenBlend; // true = Screen, false = Multiply
+
+  const _TextureOverlayPainter({
+    required this.textureImage,
+    required this.strength,
+    required this.screenBlend,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (strength <= 0) return;
+
+    try {
+      // Create paint with appropriate blend mode
+      final paint = Paint()
+        ..blendMode = screenBlend ? BlendMode.screen : BlendMode.multiply
+        ..filterQuality = FilterQuality.low;
+
+      // Apply opacity scaling via color filter
+      if (strength < 1.0) {
+        paint.colorFilter = ui.ColorFilter.mode(
+          Colors.white.withValues(alpha: strength),
+          ui.BlendMode.modulate,
+        );
+      }
+
+      // Draw the pre-decoded texture at full canvas size
+      canvas.drawImageRect(
+        textureImage,
+        Rect.fromLTWH(
+          0,
+          0,
+          textureImage.width.toDouble(),
+          textureImage.height.toDouble(),
+        ),
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        paint,
+      );
+    } catch (e) {
+      debugPrint('[RetroLab] TextureOverlay paint failed: $e');
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TextureOverlayPainter old) =>
+      old.strength != strength ||
+      old.screenBlend != screenBlend ||
+      old.textureImage != textureImage;
 }
