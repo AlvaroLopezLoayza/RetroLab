@@ -295,13 +295,14 @@ class ImageProcessor {
         // ── Temperature Shift (highlight-aware) ───────────────────────
         // FIX: Scale by (1 - luminance) so bright pixels get less shift,
         // preventing warm highlights from blowing out to pure white.
+        // Increased multiplier from 20 to 25 for stronger vintage warmth.
         if (stock.temperature != 0) {
           final lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
           final protection = 1.0 - (lum * lum); // Less shift in highlights
-          final t = stock.temperature * 20 * protection; // 20 instead of 30
+          final t = stock.temperature * 25 * protection; // 25 for stronger effect
           r = (r + t).clamp(0, 255);
           b = (b - t).clamp(0, 255);
-          g = (g + t * 0.2).clamp(0, 255); // 0.2 instead of 0.3
+          g = (g + t * 0.2).clamp(0, 255);
         }
 
         // ── Per-Channel Gamma Curves ──────────────────────────────────
@@ -357,6 +358,7 @@ class ImageProcessor {
         // ── Highlight / Shadow Tinting (capped) ──────────────────────
         // FIX: Clamp tint target so we can't push a pixel above 240,
         // preventing the tint from acting as accidental overexposure.
+        // Increased strengths from 0.4/0.25 to 0.5/0.35 for stronger vintage color casts.
         if (stock.tintStrength > 0) {
           final luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
           final highlightMask = luminance;
@@ -370,16 +372,16 @@ class ImageProcessor {
 
           r =
               r +
-              (capHlR - r) * highlightMask * ts * 0.4 +
-              (shR * 255 - r) * shadowMask * ts * 0.25;
+              (capHlR - r) * highlightMask * ts * 0.5 +
+              (shR * 255 - r) * shadowMask * ts * 0.35;
           g =
               g +
-              (capHlG - g) * highlightMask * ts * 0.4 +
-              (shG * 255 - g) * shadowMask * ts * 0.25;
+              (capHlG - g) * highlightMask * ts * 0.5 +
+              (shG * 255 - g) * shadowMask * ts * 0.35;
           b =
               b +
-              (capHlB - b) * highlightMask * ts * 0.4 +
-              (shB * 255 - b) * shadowMask * ts * 0.25;
+              (capHlB - b) * highlightMask * ts * 0.5 +
+              (shB * 255 - b) * shadowMask * ts * 0.35;
         }
 
         // ── Shadow Lift (film base fog) ──────────────────────────────

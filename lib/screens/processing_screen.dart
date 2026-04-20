@@ -29,6 +29,7 @@ class ProcessingScreen extends StatefulWidget {
   final String photoId;
   final double grain;
   final double leakStrength;
+  final double dustStrength;
   final double saturation;
   final double vignette;
   final double scratchLevel;
@@ -42,6 +43,7 @@ class ProcessingScreen extends StatefulWidget {
     required this.photoId,
     this.grain = 0.18,
     this.leakStrength = 0.6,
+    this.dustStrength = 0.6,
     this.saturation = 1.0,
     this.vignette = 0.3,
     this.scratchLevel = 0.0,
