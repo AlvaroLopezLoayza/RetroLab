@@ -44,6 +44,56 @@ class ImageProcessor {
 
   static final Random _random = Random();
 
+  static Future<File> composeDoubleExposure(File first, File second) async {
+    final firstBytes = await first.readAsBytes();
+    final secondBytes = await second.readAsBytes();
+    final composedBytes = await Isolate.run(() {
+      return composeDoubleExposureBytes(firstBytes, secondBytes);
+    });
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final retroDir = Directory('${appDir.path}/RetroLab');
+    if (!retroDir.existsSync()) {
+      retroDir.createSync(recursive: true);
+    }
+
+    final file = File(
+      '${retroDir.path}/double_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    await file.writeAsBytes(composedBytes);
+    return file;
+  }
+
+  static Uint8List composeDoubleExposureBytes(
+    Uint8List firstBytes,
+    Uint8List secondBytes,
+  ) {
+    final first = img.decodeImage(firstBytes);
+    final second = img.decodeImage(secondBytes);
+    if (first == null || second == null) {
+      throw ImageDecodeException('Failed to decode double exposure sources');
+    }
+
+    final base = img.copyResize(first, width: first.width, height: first.height);
+    final overlay = img.copyResize(
+      second,
+      width: first.width,
+      height: first.height,
+    );
+
+    for (int y = 0; y < base.height; y++) {
+      for (int x = 0; x < base.width; x++) {
+        final firstPixel = base.getPixel(x, y);
+        final secondPixel = overlay.getPixel(x, y);
+        firstPixel.r = _screenChannel(firstPixel.r, secondPixel.r);
+        firstPixel.g = _screenChannel(firstPixel.g, secondPixel.g);
+        firstPixel.b = _screenChannel(firstPixel.b, secondPixel.b);
+      }
+    }
+
+    return Uint8List.fromList(img.encodeJpg(base, quality: 92));
+  }
+
   static Future<ProcessingResult> processRetroImage(
     File original, {
     required FilmStock filmStock,
@@ -367,6 +417,12 @@ class ImageProcessor {
   }
 
   static double _mix(double a, double b, double t) => a + (b - a) * t;
+
+  static int _screenChannel(num first, num second) {
+    final a = first / 255.0;
+    final b = second / 255.0;
+    return ((1.0 - (1.0 - a) * (1.0 - b)) * 255.0).round().clamp(0, 255);
+  }
 
   static void _applyProceduralGrain(
     img.Image image,

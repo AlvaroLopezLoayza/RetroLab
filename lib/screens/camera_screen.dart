@@ -29,6 +29,7 @@ import '../core/constants.dart';
 import '../core/film_stocks.dart';
 import '../core/hive_boxes.dart';
 import '../models/film_roll.dart';
+import '../utils/image_processor.dart';
 import '../utils/video_processor.dart';
 import '../widgets/film_preview.dart';
 import '../widgets/film_stock_selector.dart';
@@ -90,8 +91,17 @@ class _CameraScreenState extends State<CameraScreen>
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   // ── Grid / Flash ───────────────────────────────────────────────────────
-  bool _showGrid = false;
+  OverlayMode _overlayMode = OverlayMode.off;
   FlashMode _flashMode = FlashMode.off;
+  double _minExposureOffset = 0.0;
+  double _maxExposureOffset = 0.0;
+  double _currentExposureOffset = 0.0;
+  double? _pendingExposureOffset;
+  Timer? _exposureApplyTimer;
+  bool _isApplyingExposure = false;
+  bool _showExposureControl = false;
+  bool _doubleExposureEnabled = false;
+  File? _pendingDoubleExposureFile;
 
   // ── Tap-to-Focus ───────────────────────────────────────────────────────
   Offset? _focusPoint; // Position of the last focus tap (screen coords)
@@ -106,6 +116,9 @@ class _CameraScreenState extends State<CameraScreen>
   bool get _videoSupported => Platform.isAndroid;
   bool get _isVideoMode => _captureMode == CaptureMode.video;
   bool get _isBusy => _isCapturing || _isProcessingVideo;
+  bool get _hasPendingDoubleExposure => _pendingDoubleExposureFile != null;
+  bool get _hasExposureControl =>
+      _maxExposureOffset > _minExposureOffset && _isCameraReady;
 
   @override
   void initState() {
@@ -134,6 +147,8 @@ class _CameraScreenState extends State<CameraScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _recordingTimer?.cancel();
+    _exposureApplyTimer?.cancel();
+    _clearPendingDoubleExposure();
     _cameraController?.dispose();
     _audioPlayer.dispose();
     _focusAnimController.dispose();
@@ -158,9 +173,12 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
     if (state == AppLifecycleState.inactive) {
+      _clearPendingDoubleExposure();
       if (_isRecordingVideo) {
         _stopVideoRecording(fromLifecycle: true);
       }
+      _exposureApplyTimer?.cancel();
+      _pendingExposureOffset = null;
       _cameraController?.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initCamera();
@@ -249,6 +267,9 @@ class _CameraScreenState extends State<CameraScreen>
     if (mounted) {
       setState(() => _isCameraReady = false);
     }
+    _exposureApplyTimer?.cancel();
+    _pendingExposureOffset = null;
+    _isApplyingExposure = false;
     _cameraController?.dispose();
     _cameraController = CameraController(
       camera,
@@ -259,6 +280,7 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       await _cameraController!.initialize();
       await _cameraController!.setFlashMode(_flashMode);
+      await _syncExposureState();
       if (mounted) setState(() => _isCameraReady = true);
     } catch (e) {
       debugPrint('Camera init error: $e');
@@ -324,6 +346,7 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _setCaptureMode(CaptureMode mode) async {
     if (!_videoSupported && mode == CaptureMode.video) return;
     if (_captureMode == mode || _isBusy || _isRecordingVideo) return;
+    if (_hasPendingDoubleExposure) return;
     if (mode == CaptureMode.video && !await _ensureMicrophonePermission()) {
       return;
     }
@@ -331,6 +354,7 @@ class _CameraScreenState extends State<CameraScreen>
       _captureMode = mode;
       _showControls = false;
       _showFilmSelector = false;
+      _showExposureControl = false;
       _timerCountdown = 0;
       if (mode == CaptureMode.video) {
         _isBurstMode = false;
@@ -340,6 +364,151 @@ class _CameraScreenState extends State<CameraScreen>
     if (_cameras.isNotEmpty) {
       await _setupCamera(_cameras[_currentCameraIndex]);
     }
+  }
+
+  Future<void> _syncExposureState() async {
+    if (_cameraController == null) return;
+    try {
+      final minOffset = await _cameraController!.getMinExposureOffset();
+      final maxOffset = await _cameraController!.getMaxExposureOffset();
+      final clamped = _currentExposureOffset.clamp(minOffset, maxOffset);
+      final applied = await _cameraController!.setExposureOffset(clamped);
+      if (mounted) {
+        setState(() {
+          _minExposureOffset = minOffset;
+          _maxExposureOffset = maxOffset;
+          _currentExposureOffset = applied;
+        });
+      }
+    } catch (error) {
+      debugPrint('Exposure state error: $error');
+      if (mounted) {
+        setState(() {
+          _minExposureOffset = 0.0;
+          _maxExposureOffset = 0.0;
+          _currentExposureOffset = 0.0;
+        });
+      }
+    }
+  }
+
+  Future<void> _setExposureOffset(double offset) async {
+    if (_cameraController == null) return;
+    final next = offset.clamp(_minExposureOffset, _maxExposureOffset);
+    _pendingExposureOffset = next;
+    if (_isApplyingExposure) return;
+    _isApplyingExposure = true;
+    try {
+      while (_cameraController != null && _pendingExposureOffset != null) {
+        final target = _pendingExposureOffset!;
+        _pendingExposureOffset = null;
+        final applied = await _cameraController!.setExposureOffset(target);
+        if (mounted) {
+          setState(() => _currentExposureOffset = applied);
+        }
+      }
+    } on CameraException catch (error) {
+      final isCanceledRequest =
+          error.code == 'setExposureOffsetFailed' &&
+          (error.description?.contains('being closed') == true ||
+              error.description?.contains('new request being submitted') ==
+                  true);
+      if (isCanceledRequest) {
+        debugPrint('Exposure request canceled: ${error.description}');
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al ajustar exposición: $error')),
+        );
+      }
+    } finally {
+      _isApplyingExposure = false;
+    }
+  }
+
+  void _scheduleExposureApply() {
+    _exposureApplyTimer?.cancel();
+    _exposureApplyTimer = Timer(
+      const Duration(milliseconds: 80),
+      () => _setExposureOffset(_currentExposureOffset),
+    );
+  }
+
+  double get _exposureSliderValue {
+    if (_maxExposureOffset <= _minExposureOffset) {
+      return _currentExposureOffset.clamp(
+        _minExposureOffset,
+        _maxExposureOffset,
+      );
+    }
+    final current = _currentExposureOffset.clamp(
+      _minExposureOffset,
+      _maxExposureOffset,
+    );
+    return (_maxExposureOffset - (current - _minExposureOffset)).clamp(
+      _minExposureOffset,
+      _maxExposureOffset,
+    );
+  }
+
+  void _setExposureFromSlider(double sliderValue) {
+    if (_maxExposureOffset <= _minExposureOffset) {
+      setState(() => _currentExposureOffset = sliderValue);
+      _scheduleExposureApply();
+      return;
+    }
+    final actualOffset =
+        _maxExposureOffset - (sliderValue - _minExposureOffset);
+    setState(() {
+      _currentExposureOffset = actualOffset.clamp(
+        _minExposureOffset,
+        _maxExposureOffset,
+      );
+    });
+    _scheduleExposureApply();
+  }
+
+  void _clearPendingDoubleExposure({bool disableMode = true}) {
+    final file = _pendingDoubleExposureFile;
+    if (file != null && file.existsSync()) {
+      file.deleteSync();
+    }
+    if (mounted) {
+      setState(() {
+        _pendingDoubleExposureFile = null;
+        if (disableMode) {
+          _doubleExposureEnabled = false;
+        }
+      });
+    } else {
+      _pendingDoubleExposureFile = null;
+      if (disableMode) {
+        _doubleExposureEnabled = false;
+      }
+    }
+  }
+
+  Future<void> _toggleDoubleExposure() async {
+    if (_isVideoMode || _isBusy || _hasPendingDoubleExposure) return;
+    if (!_doubleExposureEnabled && _currentRoll.remainingExposures < 2) {
+      _showFilmFinishedDialog();
+      return;
+    }
+    setState(() {
+      _doubleExposureEnabled = !_doubleExposureEnabled;
+      _isBurstMode = false;
+      _shutterTimer = ShutterTimer.off;
+      _showControls = false;
+      _showFilmSelector = false;
+      _showExposureControl = false;
+    });
+  }
+
+  void _cycleOverlayMode() {
+    const values = OverlayMode.values;
+    final next = values[(_overlayMode.index + 1) % values.length];
+    setState(() => _overlayMode = next);
   }
 
   /// Handle tap-to-focus on the camera preview.
@@ -394,6 +563,12 @@ class _CameraScreenState extends State<CameraScreen>
       _showFilmFinishedDialog();
       return;
     }
+    if (_doubleExposureEnabled &&
+        !_hasPendingDoubleExposure &&
+        _currentRoll.remainingExposures < 2) {
+      _showFilmFinishedDialog();
+      return;
+    }
 
     if (_shutterTimer != ShutterTimer.off) {
       setState(() => _timerCountdown = _shutterTimer.seconds);
@@ -405,14 +580,19 @@ class _CameraScreenState extends State<CameraScreen>
       setState(() => _timerCountdown = 0);
     }
 
+    if (_doubleExposureEnabled || _hasPendingDoubleExposure) {
+      await _captureDoubleExposure();
+      return;
+    }
+
     if (_isBurstMode) {
       for (int i = 0; i < 3; i++) {
-        await _capturePhoto();
+        await _capturePhotoFinal();
         if (i < 2) await Future.delayed(const Duration(milliseconds: 400));
         if (_currentRoll.isFinished) break;
       }
     } else {
-      await _capturePhoto();
+      await _capturePhotoFinal();
     }
   }
 
@@ -496,20 +676,30 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  Future<void> _capturePhoto() async {
+  Future<File> _takeRawPhoto() async {
+    if (!_isCameraReady || _cameraController == null) {
+      throw StateError('Camera not ready.');
+    }
+    _playShutterSound();
+    final xFile = await _cameraController!.takePicture();
+    return File(xFile.path);
+  }
+
+  Future<void> _consumeExposure(String exposureId) async {
+    _currentRoll = _currentRoll.withExposureTaken(exposureId);
+    await HiveService.rollsBox.put(_currentRoll.id, _currentRoll.toMap());
+    await HiveService.incrementShots();
+    await HiveService.recordStockUsage(_selectedStock.id);
+  }
+
+  Future<void> _capturePhotoFinal() async {
     if (!_isCameraReady || _cameraController == null) return;
     setState(() => _isCapturing = true);
 
     try {
-      _playShutterSound();
-      final xFile = await _cameraController!.takePicture();
-      final file = File(xFile.path);
-
       final photoId = DateTime.now().millisecondsSinceEpoch.toString();
-      _currentRoll = _currentRoll.withExposureTaken(photoId);
-      await HiveService.rollsBox.put(_currentRoll.id, _currentRoll.toMap());
-      await HiveService.incrementShots();
-      await HiveService.recordStockUsage(_selectedStock.id);
+      final file = await _takeRawPhoto();
+      await _consumeExposure(photoId);
 
       if (!mounted) return;
 
@@ -537,6 +727,83 @@ class _CameraScreenState extends State<CameraScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al capturar la foto: $e'),
+            backgroundColor: RetroColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCapturing = false);
+    }
+  }
+
+  Future<void> _captureDoubleExposure() async {
+    if (!_isCameraReady || _cameraController == null) return;
+    setState(() => _isCapturing = true);
+    File? secondFile;
+    try {
+      if (!_hasPendingDoubleExposure) {
+        final firstId = '${DateTime.now().millisecondsSinceEpoch}_a';
+        final file = await _takeRawPhoto();
+        await _consumeExposure(firstId);
+        if (mounted) {
+          setState(() {
+            _pendingDoubleExposureFile = file;
+            _showControls = false;
+            _showFilmSelector = false;
+            _showExposureControl = false;
+          });
+        }
+        return;
+      }
+
+      final secondId = '${DateTime.now().millisecondsSinceEpoch}_b';
+      secondFile = await _takeRawPhoto();
+      await _consumeExposure(secondId);
+      final firstFile = _pendingDoubleExposureFile!;
+      final composedFile = await ImageProcessor.composeDoubleExposure(
+        firstFile,
+        secondFile,
+      );
+      final photoId = DateTime.now().millisecondsSinceEpoch.toString();
+      if (firstFile.existsSync()) {
+        await firstFile.delete();
+      }
+      if (secondFile.existsSync()) {
+        await secondFile.delete();
+      }
+      if (mounted) {
+        setState(() => _pendingDoubleExposureFile = null);
+      } else {
+        _pendingDoubleExposureFile = null;
+      }
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder:
+              (_) => ProcessingScreen(
+                originalFile: composedFile,
+                filmStock: _selectedStock,
+                roll: _currentRoll,
+                photoId: photoId,
+                grain: _grain,
+                leakStrength: _leakStrength,
+                dustStrength: _dustStrength,
+                lightLeakIndex: _lightLeakIndex,
+                saturation: _saturation,
+                vignette: _vignette,
+                scratchLevel: _scratchLevel,
+              ),
+        ),
+      );
+    } catch (e) {
+      if (secondFile != null && secondFile.existsSync()) {
+        await secondFile.delete();
+      }
+      debugPrint('Double exposure error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error en doble exposición: $e'),
             backgroundColor: RetroColors.error,
           ),
         );
@@ -586,7 +853,9 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _flipCamera() {
-    if (_cameras.length < 2 || _isRecordingVideo) return;
+    if (_cameras.length < 2 || _isRecordingVideo || _hasPendingDoubleExposure) {
+      return;
+    }
     _currentCameraIndex = (_currentCameraIndex + 1) % _cameras.length;
     _setupCamera(_cameras[_currentCameraIndex]);
   }
@@ -603,7 +872,9 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _cycleTimer() {
-    if (_isVideoMode) return;
+    if (_isVideoMode || _doubleExposureEnabled || _hasPendingDoubleExposure) {
+      return;
+    }
     final timers = ShutterTimer.values;
     setState(() {
       _shutterTimer =
@@ -691,7 +962,22 @@ class _CameraScreenState extends State<CameraScreen>
                         vignette: _vignette,
                         scratchLevel: _scratchLevel,
                         lightLeakIndex: _lightLeakIndex,
-                        child: CameraPreview(_cameraController!),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CameraPreview(_cameraController!),
+                            if (_hasPendingDoubleExposure)
+                              IgnorePointer(
+                                child: Opacity(
+                                  opacity: 0.35,
+                                  child: Image.file(
+                                    _pendingDoubleExposureFile!,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -748,9 +1034,16 @@ class _CameraScreenState extends State<CameraScreen>
               filmStock: _selectedStock,
               remainingExposures:
                   _isVideoMode ? 0 : _currentRoll.remainingExposures,
-              showGrid: _showGrid,
+              overlayMode: _overlayMode,
             ),
           ),
+
+          if (_showExposureControl && _hasExposureControl)
+            Positioned(
+              top: 120,
+              right: 70,
+              child: _buildExposureControl(),
+            ),
 
           if (_isRecordingVideo)
             Positioned(
@@ -784,6 +1077,50 @@ class _CameraScreenState extends State<CameraScreen>
                         style: GoogleFonts.spaceMono(
                           color: RetroColors.textPrimary,
                           fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          if (_hasPendingDoubleExposure)
+            Positioned(
+              top: 56,
+              right: 16,
+              child: SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
+                    border: Border.all(color: RetroColors.accent),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'DOBLE EXP.',
+                        style: GoogleFonts.spaceMono(
+                          color: RetroColors.accent,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: _clearPendingDoubleExposure,
+                        child: Text(
+                          'CANCELAR 2X',
+                          style: GoogleFonts.spaceMono(
+                            color: RetroColors.textPrimary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],
@@ -873,14 +1210,33 @@ class _CameraScreenState extends State<CameraScreen>
                       tooltip: 'Flash: ${_flashMode.name}',
                     ),
                     _iconButton(
-                      Icons.grid_3x3,
-                      () => setState(() => _showGrid = !_showGrid),
-                      active: _showGrid,
+                      Icons.grid_4x4,
+                      _cycleOverlayMode,
+                      active: _overlayMode != OverlayMode.off,
+                      label: _overlayLabel,
+                    ),
+                    _iconButton(
+                      Icons.exposure,
+                      () => setState(
+                        () => _showExposureControl = !_showExposureControl,
+                      ),
+                      active: _showExposureControl,
+                      enabled: _hasExposureControl,
+                      label: 'EV',
+                    ),
+                    _iconButton(
+                      Icons.filter_2,
+                      _toggleDoubleExposure,
+                      active:
+                          _doubleExposureEnabled || _hasPendingDoubleExposure,
+                      enabled: !_isVideoMode && !_hasPendingDoubleExposure,
+                      label: '2X',
                       tooltip: 'Cuadrícula',
                     ),
                     _iconButton(
                       Icons.flip_camera_ios,
                       _flipCamera,
+                      enabled: !_hasPendingDoubleExposure,
                       tooltip: 'Cambiar Cámara',
                     ),
                     _iconButton(
@@ -889,12 +1245,16 @@ class _CameraScreenState extends State<CameraScreen>
                       active:
                           !_isVideoMode && _shutterTimer != ShutterTimer.off,
                       label: _shutterTimer.label,
+                      enabled:
+                          !_doubleExposureEnabled && !_hasPendingDoubleExposure,
                       tooltip: 'Temporizador',
                     ),
                     _iconButton(
                       Icons.burst_mode,
                       () => setState(() => _isBurstMode = !_isBurstMode),
                       active: !_isVideoMode && _isBurstMode,
+                      enabled:
+                          !_doubleExposureEnabled && !_hasPendingDoubleExposure,
                       tooltip: 'Modo Ráfaga',
                     ),
                   ],
@@ -922,12 +1282,21 @@ class _CameraScreenState extends State<CameraScreen>
     return '$minutes:$seconds';
   }
 
+  String get _overlayLabel => switch (_overlayMode) {
+    OverlayMode.off => 'OFF',
+    OverlayMode.thirds => '3R',
+    OverlayMode.golden => 'PHI',
+    OverlayMode.center => 'CTR',
+  };
+
   Widget _modeButton(CaptureMode mode, String label) {
     final active = _captureMode == mode;
     return Expanded(
       child: GestureDetector(
         onTap:
-            _isBusy || _isRecordingVideo ? null : () => _setCaptureMode(mode),
+            _isBusy || _isRecordingVideo || _hasPendingDoubleExposure
+                ? null
+                : () => _setCaptureMode(mode),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
@@ -959,6 +1328,7 @@ class _CameraScreenState extends State<CameraScreen>
     IconData icon,
     VoidCallback onPressed, {
     bool active = false,
+    bool enabled = true,
     String? label,
     String? tooltip,
   }) {
@@ -967,7 +1337,7 @@ class _CameraScreenState extends State<CameraScreen>
       child: Tooltip(
         message: tooltip ?? '',
         child: GestureDetector(
-          onTap: _isRecordingVideo ? null : onPressed,
+          onTap: _isRecordingVideo || !enabled ? null : onPressed,
           child: Container(
             width: 48,
             height: 48,
@@ -989,7 +1359,11 @@ class _CameraScreenState extends State<CameraScreen>
                   icon,
                   size: 20,
                   color:
-                      active ? RetroColors.accent : RetroColors.textSecondary,
+                      !enabled
+                          ? RetroColors.textMuted
+                          : active
+                          ? RetroColors.accent
+                          : RetroColors.textSecondary,
                 ),
                 if (label != null)
                   Positioned(
@@ -998,7 +1372,10 @@ class _CameraScreenState extends State<CameraScreen>
                       label,
                       style: GoogleFonts.spaceMono(
                         fontSize: 7,
-                        color: RetroColors.accent,
+                        color:
+                            enabled
+                                ? RetroColors.accent
+                                : RetroColors.textMuted,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1152,7 +1529,10 @@ class _CameraScreenState extends State<CameraScreen>
                           }
                         }),
                     active: _showFilmSelector,
-                    enabled: !_isRecordingVideo && !_isBusy,
+                    enabled:
+                        !_isRecordingVideo &&
+                        !_isBusy &&
+                        !_hasPendingDoubleExposure,
                   ),
                   ShutterButton(
                     onPressed: _onShutterPressed,
@@ -1168,7 +1548,10 @@ class _CameraScreenState extends State<CameraScreen>
                           _showFilmSelector = false;
                         }),
                     active: _showControls,
-                    enabled: !_isRecordingVideo && !_isBusy,
+                    enabled:
+                        !_isRecordingVideo &&
+                        !_isBusy &&
+                        !_hasPendingDoubleExposure,
                   ),
                   _bottomAction(
                     icon:
@@ -1177,13 +1560,79 @@ class _CameraScreenState extends State<CameraScreen>
                             : Icons.add_photo_alternate_outlined,
                     label: _isVideoMode ? '30s' : 'IMPORTAR',
                     onTap: _isVideoMode ? () {} : _importFromGallery,
-                    enabled: !_isVideoMode && !_isRecordingVideo && !_isBusy,
+                    enabled:
+                        !_isVideoMode &&
+                        !_isRecordingVideo &&
+                        !_isBusy &&
+                        !_hasPendingDoubleExposure,
                   ),
                 ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildExposureControl() {
+    final hasValidExposureRange = _maxExposureOffset > _minExposureOffset;
+    final sliderMin = hasValidExposureRange ? _minExposureOffset : 0.0;
+    final sliderMax = hasValidExposureRange ? _maxExposureOffset : 0.0;
+
+    return Container(
+      width: 74,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+        border: Border.all(color: RetroColors.surfaceLight),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'EV',
+            style: GoogleFonts.spaceMono(
+              color: RetroColors.accent,
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 8),
+          RotatedBox(
+            quarterTurns: 3,
+            child: SizedBox(
+              width: 120,
+              child: Slider(
+                value: _exposureSliderValue,
+                min: sliderMin,
+                max: sliderMax,
+                onChanged:
+                    hasValidExposureRange ? _setExposureFromSlider : null,
+                onChangeEnd:
+                    hasValidExposureRange
+                        ? (value) {
+                          _exposureApplyTimer?.cancel();
+                          _setExposureOffset(
+                            _maxExposureOffset -
+                                (value - _minExposureOffset),
+                          );
+                        }
+                        : null,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _currentExposureOffset.toStringAsFixed(1),
+            style: GoogleFonts.spaceMono(
+              color: RetroColors.textPrimary,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

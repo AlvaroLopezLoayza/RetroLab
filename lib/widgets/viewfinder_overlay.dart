@@ -1,26 +1,25 @@
-/// ─────────────────────────────────────────────────────────────────────────────
-/// RetroLab — Viewfinder Overlay Widget
-///
-/// Renders a camera viewfinder with corner brackets, grid lines,
-/// and film stock info overlay on the camera preview.
-/// ─────────────────────────────────────────────────────────────────────────────
 library;
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../core/constants.dart';
 import '../core/film_stocks.dart';
+
+enum OverlayMode { off, thirds, golden, center }
 
 class ViewfinderOverlay extends StatelessWidget {
   final FilmStock filmStock;
   final int remainingExposures;
-  final bool showGrid;
+  final OverlayMode overlayMode;
 
   const ViewfinderOverlay({
     super.key,
     required this.filmStock,
     required this.remainingExposures,
-    this.showGrid = false,
+    this.overlayMode = OverlayMode.off,
   });
 
   @override
@@ -28,13 +27,13 @@ class ViewfinderOverlay extends StatelessWidget {
     return IgnorePointer(
       child: Stack(
         children: [
-          // ── Corner Brackets ────────────────────────────────────────────
           ..._buildCornerBrackets(),
-
-          // ── Grid Lines (optional) ─────────────────────────────────────
-          if (showGrid) _buildGrid(),
-
-          // ── Top Info Bar ──────────────────────────────────────────────
+          if (overlayMode != OverlayMode.off)
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _CompositionPainter(mode: overlayMode),
+              ),
+            ),
           Positioned(
             top: 0,
             left: 0,
@@ -59,7 +58,6 @@ class ViewfinderOverlay extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Film stock name
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -96,8 +94,6 @@ class ViewfinderOverlay extends StatelessWidget {
                         ],
                       ),
                     ),
-
-                    // Exposure counter
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -140,8 +136,6 @@ class ViewfinderOverlay extends StatelessWidget {
               ),
             ),
           ),
-
-          // ── Date Preview (bottom-right, like HUJI) ────────────────────
           Positioned(
             bottom: 100,
             right: RetroDimens.paddingMd,
@@ -169,15 +163,11 @@ class ViewfinderOverlay extends StatelessWidget {
 
   List<Widget> _buildCornerBrackets() {
     const bracketSize = 30.0;
-    const bracketThickness = 2.0;
+    const bracketThickness = 2.8;
     const color = RetroColors.textSecondary;
     const margin = 20.0;
 
-    Widget bracket({
-      required Alignment alignment,
-      required bool top,
-      required bool left,
-    }) {
+    Widget bracket({required bool top, required bool left}) {
       return Positioned(
         top: top ? margin : null,
         bottom: !top ? margin + 80 : null,
@@ -199,15 +189,11 @@ class ViewfinderOverlay extends StatelessWidget {
     }
 
     return [
-      bracket(alignment: Alignment.topLeft, top: true, left: true),
-      bracket(alignment: Alignment.topRight, top: true, left: false),
-      bracket(alignment: Alignment.bottomLeft, top: false, left: true),
-      bracket(alignment: Alignment.bottomRight, top: false, left: false),
+      bracket(top: true, left: true),
+      bracket(top: true, left: false),
+      bracket(top: false, left: true),
+      bracket(top: false, left: false),
     ];
-  }
-
-  Widget _buildGrid() {
-    return Positioned.fill(child: CustomPaint(painter: _GridPainter()));
   }
 }
 
@@ -217,7 +203,7 @@ class _BracketPainter extends CustomPainter {
   final Color color;
   final double thickness;
 
-  _BracketPainter({
+  const _BracketPainter({
     required this.top,
     required this.left,
     required this.color,
@@ -228,7 +214,7 @@ class _BracketPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint =
         Paint()
-          ..color = color.withValues(alpha: 0.5)
+          ..color = color.withValues(alpha: 0.82)
           ..strokeWidth = thickness
           ..style = PaintingStyle.stroke;
 
@@ -257,15 +243,38 @@ class _BracketPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _GridPainter extends CustomPainter {
+class _CompositionPainter extends CustomPainter {
+  final OverlayMode mode;
+
+  const _CompositionPainter({required this.mode});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint =
+    final linePaint =
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.12)
-          ..strokeWidth = 0.5;
+          ..color = Colors.white.withValues(alpha: 0.32)
+          ..strokeWidth = 1.4;
+    final pointPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.42)
+          ..style = PaintingStyle.fill;
 
-    // Rule of thirds
+    switch (mode) {
+      case OverlayMode.off:
+        break;
+      case OverlayMode.thirds:
+        _drawThirds(canvas, size, linePaint);
+        break;
+      case OverlayMode.golden:
+        _drawGolden(canvas, size, linePaint, pointPaint);
+        break;
+      case OverlayMode.center:
+        _drawCenter(canvas, size, linePaint);
+        break;
+    }
+  }
+
+  void _drawThirds(Canvas canvas, Size size, Paint paint) {
     canvas.drawLine(
       Offset(size.width / 3, 0),
       Offset(size.width / 3, size.height),
@@ -288,6 +297,46 @@ class _GridPainter extends CustomPainter {
     );
   }
 
+  void _drawGolden(
+    Canvas canvas,
+    Size size,
+    Paint linePaint,
+    Paint pointPaint,
+  ) {
+    const minor = 0.38196601125;
+    const major = 0.61803398875;
+    final xs = [size.width * minor, size.width * major];
+    final ys = [size.height * minor, size.height * major];
+
+    for (final x in xs) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), linePaint);
+    }
+    for (final y in ys) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+    }
+    for (final x in xs) {
+      for (final y in ys) {
+        canvas.drawCircle(Offset(x, y), 3.2, pointPaint);
+      }
+    }
+  }
+
+  void _drawCenter(Canvas canvas, Size size, Paint paint) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final square = math.min(size.width, size.height) * 0.58;
+    final rect = Rect.fromCenter(
+      center: Offset(cx, cy),
+      width: square,
+      height: square,
+    );
+
+    canvas.drawRect(rect, paint);
+    canvas.drawLine(Offset(cx - 26, cy), Offset(cx + 26, cy), paint);
+    canvas.drawLine(Offset(cx, cy - 26), Offset(cx, cy + 26), paint);
+  }
+
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _CompositionPainter oldDelegate) =>
+      oldDelegate.mode != mode;
 }
