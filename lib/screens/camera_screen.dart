@@ -16,6 +16,7 @@ library;
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
@@ -51,8 +52,11 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
+  final GlobalKey _previewKey = GlobalKey();
+
   // ── Camera ─────────────────────────────────────────────────────────────
   CameraController? _cameraController;
+  Future<void> _cameraDisposeFuture = Future<void>.value();
   List<CameraDescription> _cameras = [];
   int _currentCameraIndex = 0;
   bool _isCameraReady = false;
@@ -147,7 +151,7 @@ class _CameraScreenState extends State<CameraScreen>
     WidgetsBinding.instance.removeObserver(this);
     _recordingTimer?.cancel();
     _clearPendingDoubleExposure();
-    _cameraController?.dispose();
+    unawaited(_disposeCameraController());
     _audioPlayer.dispose();
     _focusAnimController.dispose();
     _filmSelectorScrollController.dispose();
@@ -167,19 +171,19 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return;
-    }
     if (state == AppLifecycleState.inactive) {
+      if (_cameraController == null || !_cameraController!.value.isInitialized) {
+        return;
+      }
       _clearPendingDoubleExposure();
       if (_isRecordingVideo) {
-        _stopVideoRecording(fromLifecycle: true);
+        unawaited(_stopVideoRecording(fromLifecycle: true));
       }
       _pendingExposureOffset = null;
       _isApplyingExposure = false;
-      _cameraController?.dispose();
+      unawaited(_disposeCameraController());
     } else if (state == AppLifecycleState.resumed) {
-      _initCamera();
+      unawaited(_initCamera());
     }
   }
 
@@ -265,9 +269,10 @@ class _CameraScreenState extends State<CameraScreen>
     if (mounted) {
       setState(() => _isCameraReady = false);
     }
+    await _cameraDisposeFuture;
     _pendingExposureOffset = null;
     _isApplyingExposure = false;
-    _cameraController?.dispose();
+    await _disposeCameraController();
     _cameraController = CameraController(
       camera,
       ResolutionPreset.high,
@@ -282,6 +287,23 @@ class _CameraScreenState extends State<CameraScreen>
     } catch (e) {
       debugPrint('Camera init error: $e');
     }
+  }
+
+  Future<void> _disposeCameraController() {
+    final controller = _cameraController;
+    _cameraController = null;
+    if (controller == null) {
+      return _cameraDisposeFuture;
+    }
+    final disposeFuture = () async {
+      try {
+        await controller.dispose();
+      } catch (error) {
+        debugPrint('Camera dispose error: $error');
+      }
+    }();
+    _cameraDisposeFuture = disposeFuture;
+    return disposeFuture;
   }
 
   void _loadOrCreateRoll() {
@@ -513,12 +535,30 @@ class _CameraScreenState extends State<CameraScreen>
     _focusAnimController.forward(from: 0.0);
 
     // Convert screen coordinates to camera coordinates (normalized 0.0-1.0)
-    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final renderObject = _previewKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    final RenderBox renderBox = renderObject;
     final size = renderBox.size;
+    final previewSize = _cameraController!.value.previewSize;
+    final sourceWidth = previewSize?.height ?? size.width;
+    final sourceHeight = previewSize?.width ?? size.height;
+    final scale = math.max(size.width / sourceWidth, size.height / sourceHeight);
+    final fittedWidth = sourceWidth * scale;
+    final fittedHeight = sourceHeight * scale;
+    final horizontalInset = (size.width - fittedWidth) / 2;
+    final verticalInset = (size.height - fittedHeight) / 2;
 
     // Calculate normalized coordinates
-    final x = details.localPosition.dx / size.width;
-    final y = details.localPosition.dy / size.height;
+    final x =
+        ((details.localPosition.dx - horizontalInset) / fittedWidth).clamp(
+          0.0,
+          1.0,
+        );
+    final y =
+        ((details.localPosition.dy - verticalInset) / fittedHeight).clamp(
+          0.0,
+          1.0,
+        );
 
     try {
       // Set focus point (x, y are normalized to 0.0-1.0)
@@ -935,6 +975,7 @@ class _CameraScreenState extends State<CameraScreen>
             Positioned.fill(
               child: ClipRect(
                 child: GestureDetector(
+                  key: _previewKey,
                   onTapDown: _handleTapToFocus,
                   child: FittedBox(
                     fit: BoxFit.cover,

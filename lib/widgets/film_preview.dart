@@ -36,12 +36,17 @@ class FilmPreview extends StatefulWidget {
 
 class _FilmPreviewState extends State<FilmPreview> {
   static Future<ui.FragmentProgram>? _program;
+  static const Set<String> _cachedAssets = {
+    RetroAssets.textureDust,
+    RetroAssets.textureScratch,
+  };
   static final Map<String, Future<ui.Image>> _images = {};
 
   ui.FragmentShader? _shader;
   ui.Image? _leak;
   ui.Image? _dust;
   ui.Image? _scratch;
+  String? _currentLeakAsset;
 
   bool get _ready =>
       _shader != null && _leak != null && _dust != null && _scratch != null;
@@ -65,7 +70,7 @@ class _FilmPreviewState extends State<FilmPreview> {
       final images = await Future.wait([
         _image(RetroAssets.textureDust),
         _image(RetroAssets.textureScratch),
-        _image(RetroAssets.lightLeak(widget.lightLeakIndex)),
+        _image(RetroAssets.lightLeak(widget.lightLeakIndex), cache: false),
       ]);
       final shader =
           ui.ImageFilter.isShaderFilterSupported
@@ -80,6 +85,7 @@ class _FilmPreviewState extends State<FilmPreview> {
         _dust = images[0];
         _scratch = images[1];
         _leak = images[2];
+        _currentLeakAsset = RetroAssets.lightLeak(widget.lightLeakIndex);
       });
     } catch (error) {
       debugPrint('[RetroLab] Film preview shader unavailable: $error');
@@ -88,25 +94,45 @@ class _FilmPreviewState extends State<FilmPreview> {
 
   Future<void> _loadLeak() async {
     try {
-      final image = await _image(RetroAssets.lightLeak(widget.lightLeakIndex));
+      final asset = RetroAssets.lightLeak(widget.lightLeakIndex);
+      final image = await _image(asset, cache: false);
       if (mounted) {
-        setState(() => _leak = image);
+        final oldLeak = _leak;
+        final oldAsset = _currentLeakAsset;
+        setState(() {
+          _leak = image;
+          _currentLeakAsset = asset;
+        });
+        if (oldLeak != null && oldAsset != null && !_cachedAssets.contains(oldAsset)) {
+          oldLeak.dispose();
+        }
       }
     } catch (error) {
       debugPrint('[RetroLab] Film preview leak unavailable: $error');
     }
   }
 
-  static Future<ui.Image> _image(String asset) {
-    return _images.putIfAbsent(asset, () async {
+  static Future<ui.Image> _image(String asset, {bool cache = true}) {
+    Future<ui.Image> decode() async {
       final data = await rootBundle.load(asset);
       final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
       return (await codec.getNextFrame()).image;
-    });
+    }
+
+    if (!cache) {
+      return decode();
+    }
+
+    return _images.putIfAbsent(asset, decode);
   }
 
   @override
   void dispose() {
+    if (_leak != null &&
+        _currentLeakAsset != null &&
+        !_cachedAssets.contains(_currentLeakAsset)) {
+      _leak!.dispose();
+    }
     _shader?.dispose();
     super.dispose();
   }
@@ -166,6 +192,14 @@ class _FilmPreviewState extends State<FilmPreview> {
       ColorFiltered(
         colorFilter: _fallbackColorFilter(widget.stock, widget.saturation),
         child: widget.child,
+      ),
+      IgnorePointer(
+        child: CustomPaint(
+          painter: _FallbackTonePainter(
+            stock: widget.stock,
+            vignette: widget.vignette,
+          ),
+        ),
       ),
     ];
     if (_scratch != null && widget.scratchLevel > 0) {
@@ -257,4 +291,83 @@ class _TexturePainter extends CustomPainter {
       oldDelegate.image != image ||
       oldDelegate.opacity != opacity ||
       oldDelegate.blendMode != blendMode;
+}
+
+class _FallbackTonePainter extends CustomPainter {
+  final FilmStock stock;
+  final double vignette;
+
+  const _FallbackTonePainter({required this.stock, required this.vignette});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+
+    if (stock.tintStrength > 0) {
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.linear(
+            Offset.zero,
+            Offset(0, size.height * 0.6),
+            [
+              stock.highlightTint.withValues(alpha: stock.tintStrength * 0.10),
+              Colors.transparent,
+            ],
+          )
+          ..blendMode = BlendMode.screen,
+      );
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.linear(
+            Offset(0, size.height),
+            Offset(0, size.height * 0.35),
+            [
+              stock.shadowTint.withValues(alpha: stock.tintStrength * 0.12),
+              Colors.transparent,
+            ],
+          )
+          ..blendMode = BlendMode.multiply,
+      );
+    }
+
+    if (stock.halation > 0) {
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            Offset(size.width * 0.5, size.height * 0.28),
+            size.shortestSide * 0.42,
+            [
+              stock.highlightTint.withValues(alpha: stock.halation * 0.16),
+              Colors.transparent,
+            ],
+          )
+          ..blendMode = BlendMode.screen,
+      );
+    }
+
+    if (vignette > 0) {
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            rect.center,
+            size.longestSide * 0.72,
+            [
+              Colors.transparent,
+              Colors.transparent,
+              Colors.black.withValues(alpha: vignette.clamp(0.0, 1.0) * 0.42),
+            ],
+            const [0.0, 0.62, 1.0],
+          )
+          ..blendMode = BlendMode.multiply,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FallbackTonePainter oldDelegate) =>
+      oldDelegate.stock != stock || oldDelegate.vignette != vignette;
 }

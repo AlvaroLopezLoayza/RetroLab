@@ -83,8 +83,8 @@ class VideoProcessor {
     required VideoEffectSettings settings,
   }) async {
     final dir = await getTemporaryDirectory();
-    final processedPath = '${dir.path}\\retro_video_$outputId.mp4';
-    final thumbnailPath = '${dir.path}\\retro_video_$outputId.jpg';
+    final processedPath = '${dir.path}/retro_video_$outputId.mp4';
+    final thumbnailPath = '${dir.path}/retro_video_$outputId.jpg';
     final result = await _channel.invokeMapMethod<String, dynamic>(
       'processVideo',
       {
