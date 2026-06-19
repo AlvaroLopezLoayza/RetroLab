@@ -64,7 +64,8 @@ class ImageProcessor {
     required FilmStock filmStock,
     double? grain,
     double leakStrength = 0.6,
-    double dustStrength = 0.0, // ✅ NEW (safe default)
+    double dustStrength = 0.0,
+    int? lightLeakIndex,
     double? saturationOverride,
     double? vignette,
     double scratchLevel = 0.0,
@@ -106,7 +107,7 @@ class ImageProcessor {
 
     // ── Light Leaks (v3 fix) ──────────────────────────────
     if (leakStrength > 0) {
-      final leakIndex = _random.nextInt(42);
+      final leakIndex = lightLeakIndex ?? _random.nextInt(42);
       try {
         final data = await rootBundle.load(RetroAssets.lightLeak(leakIndex));
         leakBytes = data.buffer.asUint8List();

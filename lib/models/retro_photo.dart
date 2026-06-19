@@ -12,6 +12,8 @@ class RetroPhoto {
   final DateTime capturedAt;
   final double grain;
   final double leakStrength;
+  final double dustStrength;
+  final int lightLeakIndex;
   final double saturation;
   final double vignette;
   final double scratchLevel;
@@ -27,8 +29,10 @@ class RetroPhoto {
     required this.filmStockId,
     required this.rollId,
     required this.capturedAt,
-    this.grain = 0.18,
-    this.leakStrength = 0.6,
+    this.grain = 0.10,
+    this.leakStrength = 0.10,
+    this.dustStrength = 0.05,
+    this.lightLeakIndex = 0,
     this.saturation = 1.0,
     this.vignette = 0.3,
     this.scratchLevel = 0.0,
@@ -47,8 +51,10 @@ class RetroPhoto {
       filmStockId: map['filmStockId'] as String,
       rollId: map['rollId'] as String,
       capturedAt: DateTime.parse(map['capturedAt'] as String),
-      grain: (map['grain'] as num?)?.toDouble() ?? 0.18,
-      leakStrength: (map['leakStrength'] as num?)?.toDouble() ?? 0.6,
+      grain: (map['grain'] as num?)?.toDouble() ?? 0.10,
+      leakStrength: (map['leakStrength'] as num?)?.toDouble() ?? 0.10,
+      dustStrength: (map['dustStrength'] as num?)?.toDouble() ?? 0.05,
+      lightLeakIndex: (map['lightLeakIndex'] as num?)?.toInt() ?? 0,
       saturation: (map['saturation'] as num?)?.toDouble() ?? 1.0,
       vignette: (map['vignette'] as num?)?.toDouble() ?? 0.3,
       scratchLevel: (map['scratchLevel'] as num?)?.toDouble() ?? 0.0,
@@ -70,6 +76,8 @@ class RetroPhoto {
       'capturedAt': capturedAt.toIso8601String(),
       'grain': grain,
       'leakStrength': leakStrength,
+      'dustStrength': dustStrength,
+      'lightLeakIndex': lightLeakIndex,
       'saturation': saturation,
       'vignette': vignette,
       'scratchLevel': scratchLevel,
@@ -86,6 +94,8 @@ class RetroPhoto {
     String? filmStockId,
     double? grain,
     double? leakStrength,
+    double? dustStrength,
+    int? lightLeakIndex,
     double? saturation,
     double? vignette,
     double? scratchLevel,
@@ -102,6 +112,8 @@ class RetroPhoto {
       capturedAt: capturedAt,
       grain: grain ?? this.grain,
       leakStrength: leakStrength ?? this.leakStrength,
+      dustStrength: dustStrength ?? this.dustStrength,
+      lightLeakIndex: lightLeakIndex ?? this.lightLeakIndex,
       saturation: saturation ?? this.saturation,
       vignette: vignette ?? this.vignette,
       scratchLevel: scratchLevel ?? this.scratchLevel,

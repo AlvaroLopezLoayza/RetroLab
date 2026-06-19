@@ -121,7 +121,7 @@ class RetroTheme {
       ),
 
       // Dialog
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         backgroundColor: RetroColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
@@ -134,7 +134,7 @@ class RetroTheme {
       ),
 
       // Card
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: RetroColors.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(

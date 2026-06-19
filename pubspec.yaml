@@ -46,6 +46,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  shaders:
+    - shaders/film_preview.frag
+
   assets:
     - assets/light_leaks/
     - assets/lottie/

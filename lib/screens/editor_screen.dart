@@ -16,6 +16,7 @@ import '../core/film_stocks.dart';
 import '../core/hive_boxes.dart';
 import '../models/retro_photo.dart';
 import '../utils/image_processor.dart';
+import '../widgets/film_preview.dart';
 import '../widgets/film_stock_selector.dart';
 import '../widgets/grain_overlay.dart';
 import '../widgets/retro_slider.dart';
@@ -34,6 +35,8 @@ class _EditorScreenState extends State<EditorScreen> {
   late FilmStock _selectedStock;
   late double _grain;
   late double _leakStrength;
+  late double _dustStrength;
+  late int _lightLeakIndex;
   late double _saturation;
   late double _vignette;
   late double _scratchLevel;
@@ -49,6 +52,8 @@ class _EditorScreenState extends State<EditorScreen> {
     _selectedStock = FilmStocks.getById(widget.photo.filmStockId);
     _grain = widget.photo.grain;
     _leakStrength = widget.photo.leakStrength;
+    _dustStrength = widget.photo.dustStrength;
+    _lightLeakIndex = widget.photo.lightLeakIndex;
     _saturation = widget.photo.saturation;
     _vignette = widget.photo.vignette;
     _scratchLevel = widget.photo.scratchLevel;
@@ -77,6 +82,8 @@ class _EditorScreenState extends State<EditorScreen> {
         filmStock: _selectedStock,
         grain: _grain,
         leakStrength: _leakStrength,
+        dustStrength: _dustStrength,
+        lightLeakIndex: _lightLeakIndex,
         saturationOverride: _saturation,
         vignette: _vignette,
         scratchLevel: _scratchLevel,
@@ -93,6 +100,8 @@ class _EditorScreenState extends State<EditorScreen> {
         filmStockId: _selectedStock.id,
         grain: _grain,
         leakStrength: _leakStrength,
+        dustStrength: _dustStrength,
+        lightLeakIndex: _lightLeakIndex,
         saturation: _saturation,
         vignette: _vignette,
         scratchLevel: _scratchLevel,
@@ -173,10 +182,23 @@ class _EditorScreenState extends State<EditorScreen> {
                 Center(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
-                    child: Image.file(
-                      File(widget.photo.processedPath),
+                    child: SizedBox(
                       height: 260,
-                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      child: FilmPreview(
+                        stock: _selectedStock,
+                        grain: _grain,
+                        leakStrength: _leakStrength,
+                        dustStrength: _dustStrength,
+                        saturation: _saturation,
+                        vignette: _vignette,
+                        scratchLevel: _scratchLevel,
+                        lightLeakIndex: _lightLeakIndex,
+                        child: Image.file(
+                          File(widget.photo.originalPath),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -188,7 +210,10 @@ class _EditorScreenState extends State<EditorScreen> {
                 FilmStockSelector(
                   selectedStock: _selectedStock,
                   onStockChanged: (stock) {
-                    setState(() => _selectedStock = stock);
+                    setState(() {
+                      _selectedStock = stock;
+                      _lightLeakIndex = stock.id.hashCode.abs() % 42;
+                    });
                   },
                   compact: true,
                 ),
@@ -208,6 +233,12 @@ class _EditorScreenState extends State<EditorScreen> {
                   icon: Icons.flare,
                   value: _leakStrength,
                   onChanged: (v) => setState(() => _leakStrength = v),
+                ),
+                RetroSlider(
+                  label: 'DUST',
+                  icon: Icons.blur_on,
+                  value: _dustStrength,
+                  onChanged: (v) => setState(() => _dustStrength = v),
                 ),
                 RetroSlider(
                   label: 'SAT',

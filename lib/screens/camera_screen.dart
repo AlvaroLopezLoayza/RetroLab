@@ -31,8 +31,8 @@ import '../core/constants.dart';
 import '../core/film_stocks.dart';
 import '../core/hive_boxes.dart';
 import '../models/film_roll.dart';
+import '../widgets/film_preview.dart';
 import '../widgets/film_stock_selector.dart';
-import '../widgets/grain_overlay.dart';
 import '../widgets/retro_slider.dart';
 import '../widgets/shutter_button.dart';
 import '../widgets/viewfinder_overlay.dart';
@@ -62,17 +62,16 @@ class _CameraScreenState extends State<CameraScreen>
   final ScrollController _filmSelectorScrollController = ScrollController();
 
   // ── Effect Controls ────────────────────────────────────────────────────
-  double _grain = 0.18;
-  double _leakStrength = 0.0;
-  double _dustStrength = 0.0;
+  double _grain = 0.10;
+  double _leakStrength = 0.10;
+  double _dustStrength = 0.05;
   double _saturation = 1.0;
   double _vignette = 0.3;
   double _scratchLevel = 0.0;
+  int _lightLeakIndex = 0;
 
   // ── Light Leak Preview Animation ──────────────────────────────────────
   // Animates the leak overlay so it feels alive on the preview, not static.
-  late final AnimationController _leakAnimController;
-  late final Animation<double> _leakAnim;
 
   // ── Timer & Burst ──────────────────────────────────────────────────────
   ShutterTimer _shutterTimer = ShutterTimer.off;
@@ -96,11 +95,6 @@ class _CameraScreenState extends State<CameraScreen>
   // ── Texture Cache (WYSIWYG Preview) ────────────────────────────────────
   // Pre-decoded ui.Image objects for real-time overlay rendering.
   // Stored as ui.Image (not raw bytes) to avoid expensive decoding on every paint.
-  ui.Image? _cachedLeakImage;
-  ui.Image? _cachedDustImage;
-  ui.Image? _cachedScratchImage;
-  int _currentLeakIndex = 0; // Deterministic light leak selection per stock
-  bool _texturesLoading = false; // Prevent multiple simultaneous loads
 
   @override
   void initState() {
@@ -108,14 +102,6 @@ class _CameraScreenState extends State<CameraScreen>
     WidgetsBinding.instance.addObserver(this);
 
     // Slow breathing animation for light leak overlay
-    _leakAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat(reverse: true);
-    _leakAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
-      CurvedAnimation(parent: _leakAnimController, curve: Curves.easeInOut),
-    );
-
     // Focus indicator animation (scale + fade out)
     _focusAnimController = AnimationController(
       vsync: this,
@@ -138,7 +124,6 @@ class _CameraScreenState extends State<CameraScreen>
     WidgetsBinding.instance.removeObserver(this);
     _cameraController?.dispose();
     _audioPlayer.dispose();
-    _leakAnimController.dispose();
     _focusAnimController.dispose();
     _filmSelectorScrollController.dispose();
     super.dispose();
@@ -291,103 +276,18 @@ class _CameraScreenState extends State<CameraScreen>
     HiveService.incrementRolls();
   }
 
-  void _initializeEffectsFromFilmStock() {
+  void _initializeEffectsFromFilmStock({bool resetTextures = true}) {
     setState(() {
-      _grain = _selectedStock.baseGrain;
       _vignette = _selectedStock.baseVignette;
       _saturation = _selectedStock.saturation;
-      _leakStrength = 0.0;
-      _dustStrength = 0.0;
+      if (resetTextures) {
+        _grain = 0.10;
+        _leakStrength = 0.10;
+        _dustStrength = 0.05;
+      }
       _scratchLevel = 0.0;
+      _lightLeakIndex = _selectedStock.id.hashCode.abs() % 42;
     });
-    // Load textures asynchronously for WYSIWYG preview
-    _loadPreviewTextures();
-  }
-
-  /// Load texture assets for preview overlays asynchronously.
-  /// Decodes PNG bytes directly to ui.Image objects for instant canvas rendering.
-  /// Called when film stock changes to show accurate textures for the new stock.
-  Future<void> _loadPreviewTextures() async {
-    if (_texturesLoading) return;
-    _texturesLoading = true;
-
-    try {
-      // Deterministically select a light leak based on film stock ID
-      _currentLeakIndex = _selectedStock.id.hashCode.abs() % 42;
-
-      // Load and decode light leak texture
-      try {
-        final leakData =
-            await rootBundle.load(RetroAssets.lightLeak(_currentLeakIndex));
-        final codec =
-            await ui.instantiateImageCodec(leakData.buffer.asUint8List());
-        final frame = await codec.getNextFrame();
-        if (mounted) {
-          setState(() {
-            _cachedLeakImage = frame.image;
-          });
-        }
-      } catch (e) {
-        debugPrint('[RetroLab] Leak texture load failed: $e');
-        _cachedLeakImage = null;
-      }
-
-      // Load and decode dust texture
-      try {
-        final dustData = await rootBundle.load(RetroAssets.textureDust);
-        final codec =
-            await ui.instantiateImageCodec(dustData.buffer.asUint8List());
-        final frame = await codec.getNextFrame();
-        if (mounted) {
-          setState(() {
-            _cachedDustImage = frame.image;
-          });
-        }
-      } catch (e) {
-        debugPrint('[RetroLab] Dust texture load failed: $e');
-        _cachedDustImage = null;
-      }
-
-      // Load and decode scratch texture
-      try {
-        final scratchData =
-            await rootBundle.load(RetroAssets.textureScratch);
-        final codec =
-            await ui.instantiateImageCodec(scratchData.buffer.asUint8List());
-        final frame = await codec.getNextFrame();
-        if (mounted) {
-          setState(() {
-            _cachedScratchImage = frame.image;
-          });
-        }
-      } catch (e) {
-        debugPrint('[RetroLab] Scratch texture load failed: $e');
-        _cachedScratchImage = null;
-      }
-    } finally {
-      _texturesLoading = false;
-    }
-  }
-
-  /// Composites a pre-decoded ui.Image over the camera preview.
-  /// Replicates the Screen or Multiply blending used in the processor.
-  ///
-  /// Parameters:
-  ///   - textureImage: Pre-decoded ui.Image (for performance)
-  ///   - strength: Opacity factor (0.0-1.0)
-  ///   - screenBlend: true = Screen (light overlays), false = Multiply (grain/scratches)
-  Widget _buildTextureOverlay(
-    ui.Image textureImage,
-    double strength, {
-    bool screenBlend = true,
-  }) {
-    return CustomPaint(
-      painter: _TextureOverlayPainter(
-        textureImage: textureImage,
-        strength: strength,
-        screenBlend: screenBlend,
-      ),
-    );
   }
 
   /// Handle tap-to-focus on the camera preview.
@@ -483,6 +383,7 @@ class _CameraScreenState extends State<CameraScreen>
             grain: _grain,
             leakStrength: _leakStrength,
             dustStrength: _dustStrength,
+            lightLeakIndex: _lightLeakIndex,
             saturation: _saturation,
             vignette: _vignette,
             scratchLevel: _scratchLevel,
@@ -532,6 +433,7 @@ class _CameraScreenState extends State<CameraScreen>
           grain: _grain,
           leakStrength: _leakStrength,
           dustStrength: _dustStrength,
+          lightLeakIndex: _lightLeakIndex,
           saturation: _saturation,
           vignette: _vignette,
           scratchLevel: _scratchLevel,
@@ -628,15 +530,15 @@ class _CameraScreenState extends State<CameraScreen>
                     child: SizedBox(
                       width: _cameraController!.value.previewSize?.height ?? 1,
                       height: _cameraController!.value.previewSize?.width ?? 1,
-                      child: ColorFiltered(
-                        // FIX: Pass all slider overrides so the color filter
-                        // updates whenever any slider changes, not just on
-                        // film stock switch.
-                        colorFilter: _buildColorFilter(
-                          _selectedStock,
-                          saturationOverride: _saturation,
-                          vignetteOverride: _vignette,
-                        ),
+                      child: FilmPreview(
+                        stock: _selectedStock,
+                        grain: _grain,
+                        leakStrength: _leakStrength,
+                        dustStrength: _dustStrength,
+                        saturation: _saturation,
+                        vignette: _vignette,
+                        scratchLevel: _scratchLevel,
+                        lightLeakIndex: _lightLeakIndex,
                         child: CameraPreview(_cameraController!),
                       ),
                     ),
@@ -690,105 +592,6 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
               ),
             ),
-
-          // ── Grain Overlay ──────────────────────────────────────────────
-          // FIX: was using _selectedStock.baseGrain * 0.15 (always fixed to
-          // stock default). Now uses the _grain slider value directly.
-          if (_grain > 0)
-            Positioned.fill(
-              child: GrainOverlay(
-                opacity: (_grain * 0.18).clamp(0.02, 0.30),
-                animate: true,
-              ),
-            ),
-
-          // ── Light Leak Texture Overlay ──────────────────────────────────
-          // Shows the actual light leak PNG asset with Screen blending.
-          // If texture not available, falls back to animated color wash.
-          if (_leakStrength > 0)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: _cachedLeakImage != null
-                    ? AnimatedBuilder(
-                        animation: _leakAnim,
-                        builder: (_, __) => _buildTextureOverlay(
-                          _cachedLeakImage!,
-                          _leakStrength * _leakAnim.value,
-                          screenBlend: true,
-                        ),
-                      )
-                    : AnimatedBuilder(
-                        animation: _leakAnim,
-                        builder: (_, __) => _buildLeakPreviewOverlay(
-                          _selectedStock,
-                          _leakStrength * _leakAnim.value,
-                        ),
-                      ),
-              ),
-            ),
-
-          // ── Scratch Texture Overlay ──────────────────────────────────────
-          // Uses actual scratch texture asset if available, otherwise falls back
-          // to procedural scanlines. Blended with Multiply for authentic look.
-          if (_scratchLevel > 0)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: _cachedScratchImage != null
-                    ? _buildTextureOverlay(
-                        _cachedScratchImage!,
-                        _scratchLevel,
-                        screenBlend: false,
-                      )
-                    : CustomPaint(
-                        painter: _ScratchPreviewPainter(
-                          intensity: _scratchLevel,
-                          seed: 42,
-                        ),
-                      ),
-              ),
-            ),
-
-          // ── Dust Texture Overlay (before vignette) ──────────────────────
-          // Screen-blended dust particles matching processor output.
-          if (_dustStrength > 0 && _cachedDustImage != null)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: _buildTextureOverlay(
-                  _cachedDustImage!,
-                  _dustStrength,
-                  screenBlend: true,
-                ),
-              ),
-            ),
-
-          // ── Vignette & Tint Overlay ────────────────────────────────────
-          // Radial gradient overlay that darkens edges and applies color tints.
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    colors: [
-                      _selectedStock.highlightTint.withValues(
-                        alpha: (_selectedStock.tintStrength * 0.08)
-                            .clamp(0.0, 0.15),
-                      ),
-                      Colors.transparent,
-                      _selectedStock.shadowTint.withValues(
-                        alpha: (_vignette * 0.55).clamp(0.0, 0.9),
-                      ),
-                      Colors.black.withValues(
-                        alpha: (_vignette * 0.80).clamp(0.0, 0.95),
-                      ),
-                    ],
-                    center: Alignment.center,
-                    radius: 1.0,
-                    stops: const [0.0, 0.4, 0.7, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
 
           // ── Viewfinder Overlay ─────────────────────────────────────────
           Positioned.fill(
@@ -851,7 +654,7 @@ class _CameraScreenState extends State<CameraScreen>
                       });
                       HiveService.rollsBox
                           .put(_currentRoll.id, _currentRoll.toMap());
-                      _initializeEffectsFromFilmStock();
+                      _initializeEffectsFromFilmStock(resetTextures: false);
                     },
                   ),
                 ),
@@ -892,48 +695,6 @@ class _CameraScreenState extends State<CameraScreen>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // ── Preview Overlays ───────────────────────────────────────────────────
-
-  /// Builds an edge color wash that mimics how light leak PNGs look —
-  /// a warm or cool glow that bleeds from one corner/edge.
-  ///
-  /// The color is derived from the film stock's highlight tint so it stays
-  /// coherent with whichever stock is loaded (e.g. CineStill 800T = red edge,
-  /// Kodak Gold = warm orange, Fuji Superia = cool green).
-  Widget _buildLeakPreviewOverlay(FilmStock stock, double strength) {
-    // Use the stock's highlight tint as the leak colour, falling back to
-    // a generic warm orange if the tint is transparent.
-    final tintColor = stock.highlightTint == Colors.transparent
-        ? const Color(0xFFFF8C00)
-        : stock.highlightTint;
-
-    // Randomly seed which corner the leak bleeds from, but keep it stable
-    // across frames by using the stock id as seed.
-    final stockHash = stock.id.hashCode;
-    final alignments = [
-      Alignment.topLeft,
-      Alignment.topRight,
-      Alignment.bottomLeft,
-      Alignment.bottomRight,
-    ];
-    final leakOrigin = alignments[stockHash.abs() % alignments.length];
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: leakOrigin,
-          radius: 1.5,
-          colors: [
-            tintColor.withValues(alpha: (strength * 0.55).clamp(0.0, 0.55)),
-            tintColor.withValues(alpha: (strength * 0.20).clamp(0.0, 0.20)),
-            Colors.transparent,
-          ],
-          stops: const [0.0, 0.35, 0.75],
-        ),
       ),
     );
   }

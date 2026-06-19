@@ -30,6 +30,7 @@ class ProcessingScreen extends StatefulWidget {
   final double grain;
   final double leakStrength;
   final double dustStrength;
+  final int lightLeakIndex;
   final double saturation;
   final double vignette;
   final double scratchLevel;
@@ -41,9 +42,10 @@ class ProcessingScreen extends StatefulWidget {
     required this.filmStock,
     required this.roll,
     required this.photoId,
-    this.grain = 0.18,
-    this.leakStrength = 0.6,
-    this.dustStrength = 0.6,
+    this.grain = 0.10,
+    this.leakStrength = 0.10,
+    this.dustStrength = 0.05,
+    this.lightLeakIndex = 0,
     this.saturation = 1.0,
     this.vignette = 0.3,
     this.scratchLevel = 0.0,
@@ -107,6 +109,8 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
         filmStock: widget.filmStock,
         grain: widget.grain,
         leakStrength: widget.leakStrength,
+        dustStrength: widget.dustStrength,
+        lightLeakIndex: widget.lightLeakIndex,
         saturationOverride: widget.saturation,
         vignette: widget.vignette,
         scratchLevel: widget.scratchLevel,
@@ -132,6 +136,8 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
         capturedAt: DateTime.now(),
         grain: widget.grain,
         leakStrength: widget.leakStrength,
+        dustStrength: widget.dustStrength,
+        lightLeakIndex: widget.lightLeakIndex,
         saturation: widget.saturation,
         vignette: widget.vignette,
         scratchLevel: widget.scratchLevel,
