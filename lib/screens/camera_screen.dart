@@ -97,7 +97,6 @@ class _CameraScreenState extends State<CameraScreen>
   double _maxExposureOffset = 0.0;
   double _currentExposureOffset = 0.0;
   double? _pendingExposureOffset;
-  Timer? _exposureApplyTimer;
   bool _isApplyingExposure = false;
   bool _showExposureControl = false;
   bool _doubleExposureEnabled = false;
@@ -147,7 +146,6 @@ class _CameraScreenState extends State<CameraScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _recordingTimer?.cancel();
-    _exposureApplyTimer?.cancel();
     _clearPendingDoubleExposure();
     _cameraController?.dispose();
     _audioPlayer.dispose();
@@ -177,8 +175,8 @@ class _CameraScreenState extends State<CameraScreen>
       if (_isRecordingVideo) {
         _stopVideoRecording(fromLifecycle: true);
       }
-      _exposureApplyTimer?.cancel();
       _pendingExposureOffset = null;
+      _isApplyingExposure = false;
       _cameraController?.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initCamera();
@@ -267,7 +265,6 @@ class _CameraScreenState extends State<CameraScreen>
     if (mounted) {
       setState(() => _isCameraReady = false);
     }
-    _exposureApplyTimer?.cancel();
     _pendingExposureOffset = null;
     _isApplyingExposure = false;
     _cameraController?.dispose();
@@ -367,17 +364,35 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _syncExposureState() async {
-    if (_cameraController == null) return;
+    final controller = _cameraController;
+    if (controller == null) return;
     try {
-      final minOffset = await _cameraController!.getMinExposureOffset();
-      final maxOffset = await _cameraController!.getMaxExposureOffset();
+      final minOffset = await controller.getMinExposureOffset();
+      final maxOffset = await controller.getMaxExposureOffset();
       final clamped = _currentExposureOffset.clamp(minOffset, maxOffset);
-      final applied = await _cameraController!.setExposureOffset(clamped);
+      await controller.setExposureOffset(clamped);
+      if (!mounted ||
+          !identical(controller, _cameraController) ||
+          !controller.value.isInitialized) {
+        return;
+      }
       if (mounted) {
         setState(() {
           _minExposureOffset = minOffset;
           _maxExposureOffset = maxOffset;
-          _currentExposureOffset = applied;
+          _currentExposureOffset = clamped;
+        });
+      }
+    } on CameraException catch (error) {
+      if (_isExpectedExposureCancellation(error)) {
+        return;
+      }
+      debugPrint('Exposure state error: $error');
+      if (mounted && identical(controller, _cameraController)) {
+        setState(() {
+          _minExposureOffset = 0.0;
+          _maxExposureOffset = 0.0;
+          _currentExposureOffset = 0.0;
         });
       }
     } catch (error) {
@@ -393,27 +408,22 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _setExposureOffset(double offset) async {
-    if (_cameraController == null) return;
-    final next = offset.clamp(_minExposureOffset, _maxExposureOffset);
+    final controller = _cameraController;
+    if (controller == null) return;
+    final next = offset.clamp(_minExposureOffset, _maxExposureOffset).toDouble();
     _pendingExposureOffset = next;
     if (_isApplyingExposure) return;
     _isApplyingExposure = true;
     try {
-      while (_cameraController != null && _pendingExposureOffset != null) {
+      while (identical(controller, _cameraController) &&
+          controller.value.isInitialized &&
+          _pendingExposureOffset != null) {
         final target = _pendingExposureOffset!;
         _pendingExposureOffset = null;
-        final applied = await _cameraController!.setExposureOffset(target);
-        if (mounted) {
-          setState(() => _currentExposureOffset = applied);
-        }
+        await controller.setExposureOffset(target);
       }
     } on CameraException catch (error) {
-      final isCanceledRequest =
-          error.code == 'setExposureOffsetFailed' &&
-          (error.description?.contains('being closed') == true ||
-              error.description?.contains('new request being submitted') ==
-                  true);
-      if (isCanceledRequest) {
+      if (_isExpectedExposureCancellation(error)) {
         debugPrint('Exposure request canceled: ${error.description}');
         return;
       }
@@ -423,50 +433,28 @@ class _CameraScreenState extends State<CameraScreen>
         );
       }
     } finally {
-      _isApplyingExposure = false;
+      if (identical(controller, _cameraController)) {
+        _isApplyingExposure = false;
+        if (_pendingExposureOffset != null && controller.value.isInitialized) {
+          unawaited(_setExposureOffset(_pendingExposureOffset!));
+        }
+      }
     }
-  }
-
-  void _scheduleExposureApply() {
-    _exposureApplyTimer?.cancel();
-    _exposureApplyTimer = Timer(
-      const Duration(milliseconds: 80),
-      () => _setExposureOffset(_currentExposureOffset),
-    );
-  }
-
-  double get _exposureSliderValue {
-    if (_maxExposureOffset <= _minExposureOffset) {
-      return _currentExposureOffset.clamp(
-        _minExposureOffset,
-        _maxExposureOffset,
-      );
-    }
-    final current = _currentExposureOffset.clamp(
-      _minExposureOffset,
-      _maxExposureOffset,
-    );
-    return (_maxExposureOffset - (current - _minExposureOffset)).clamp(
-      _minExposureOffset,
-      _maxExposureOffset,
-    );
   }
 
   void _setExposureFromSlider(double sliderValue) {
-    if (_maxExposureOffset <= _minExposureOffset) {
-      setState(() => _currentExposureOffset = sliderValue);
-      _scheduleExposureApply();
-      return;
-    }
     final actualOffset =
-        _maxExposureOffset - (sliderValue - _minExposureOffset);
+        sliderValue.clamp(_minExposureOffset, _maxExposureOffset).toDouble();
     setState(() {
-      _currentExposureOffset = actualOffset.clamp(
-        _minExposureOffset,
-        _maxExposureOffset,
-      );
+      _currentExposureOffset = actualOffset;
     });
-    _scheduleExposureApply();
+    unawaited(_setExposureOffset(actualOffset));
+  }
+
+  bool _isExpectedExposureCancellation(CameraException error) {
+    return error.code == 'setExposureOffsetFailed' &&
+        (error.description?.contains('being closed') == true ||
+            error.description?.contains('new request being submitted') == true);
   }
 
   void _clearPendingDoubleExposure({bool disableMode = true}) {
@@ -1605,21 +1593,13 @@ class _CameraScreenState extends State<CameraScreen>
             child: SizedBox(
               width: 120,
               child: Slider(
-                value: _exposureSliderValue,
+                value:
+                    _currentExposureOffset.clamp(sliderMin, sliderMax).toDouble(),
                 min: sliderMin,
                 max: sliderMax,
                 onChanged:
                     hasValidExposureRange ? _setExposureFromSlider : null,
-                onChangeEnd:
-                    hasValidExposureRange
-                        ? (value) {
-                          _exposureApplyTimer?.cancel();
-                          _setExposureOffset(
-                            _maxExposureOffset -
-                                (value - _minExposureOffset),
-                          );
-                        }
-                        : null,
+                onChangeEnd: null,
               ),
             ),
           ),
