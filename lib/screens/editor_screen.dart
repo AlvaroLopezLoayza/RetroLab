@@ -212,6 +212,8 @@ class _EditorScreenState extends State<EditorScreen> {
                   onStockChanged: (stock) {
                     setState(() {
                       _selectedStock = stock;
+                      _saturation = stock.saturation;
+                      _vignette = stock.baseVignette;
                       _lightLeakIndex = stock.id.hashCode.abs() % 42;
                     });
                   },
@@ -276,7 +278,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                   value: _dateStampEnabled,
                   onChanged: (v) => setState(() => _dateStampEnabled = v),
-                  activeColor: RetroColors.accent,
+                  activeThumbColor: RetroColors.accent,
                   contentPadding: EdgeInsets.zero,
                 ),
 

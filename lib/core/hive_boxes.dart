@@ -39,7 +39,7 @@ class HiveService {
       settingsBox.put('dark_mode', value);
 
   static bool get analogRandomnessEnabled =>
-      settingsBox.get('analog_randomness', defaultValue: true) as bool;
+      settingsBox.get('analog_randomness', defaultValue: false) as bool;
 
   static Future<void> setAnalogRandomness(bool value) async =>
       settingsBox.put('analog_randomness', value);

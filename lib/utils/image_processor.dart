@@ -1,15 +1,3 @@
-/// ─────────────────────────────────────────────────────────────────────────────
-/// RetroLab — Image Processor (v2 — Fixed Exposure & Burn)
-///
-/// Key fixes over v1:
-///   • Soft-knee tone mapping replaces hard clamp → no more burnt highlights
-///   • Contrast uses proper S-curve (Photoshop-accurate formula)
-///   • Temperature shift is highlight-aware (rolls off in bright areas)
-///   • Highlight tinting capped so it can't push pixels above 240
-///   • Screen blend uses conservative opacity (0.5× factor)
-///   • Grain multiply removes the 1.5× amplifier
-///   • Global exposure trim (-0.05 stops) added as a safety net
-/// ─────────────────────────────────────────────────────────────────────────────
 library;
 
 import 'dart:io';
@@ -18,8 +6,8 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:image/image.dart' as img;
 import 'package:gal/gal.dart';
+import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -29,6 +17,7 @@ import '../core/film_stocks.dart';
 class ImageDecodeException implements Exception {
   final String message;
   ImageDecodeException([this.message = 'Failed to decode image data']);
+
   @override
   String toString() => 'ImageDecodeException: $message';
 }
@@ -38,6 +27,7 @@ class ImageProcessingException implements Exception {
   ImageProcessingException([
     this.message = 'Failed to process image capabilities',
   ]);
+
   @override
   String toString() => 'ImageProcessingException: $message';
 }
@@ -49,15 +39,10 @@ class ProcessingResult {
   ProcessingResult({required this.file, required this.bytes});
 }
 
-/// Main image processor for RetroLab.
 class ImageProcessor {
   ImageProcessor._();
 
   static final Random _random = Random();
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PUBLIC API
-  // ═══════════════════════════════════════════════════════════════════════════
 
   static Future<ProcessingResult> processRetroImage(
     File original, {
@@ -78,24 +63,10 @@ class ImageProcessor {
   }) async {
     final bytes = await original.readAsBytes();
 
-    Uint8List? grainBytes;
     Uint8List? scratchBytes;
     Uint8List? leakBytes;
     Uint8List? dustBytes;
 
-    final effectiveGrain = grain ?? filmStock.baseGrain;
-
-    // ── Grain ─────────────────────────────────────────────
-    if (effectiveGrain > 0) {
-      try {
-        final data = await rootBundle.load(RetroAssets.textureGrain);
-        grainBytes = data.buffer.asUint8List();
-      } catch (e) {
-        debugPrint('[RetroLab] Grain load failed → procedural fallback: $e');
-      }
-    }
-
-    // ── Scratches ─────────────────────────────────────────
     if (scratchLevel > 0) {
       try {
         final data = await rootBundle.load(RetroAssets.textureScratch);
@@ -105,7 +76,6 @@ class ImageProcessor {
       }
     }
 
-    // ── Light Leaks (v3 fix) ──────────────────────────────
     if (leakStrength > 0) {
       final leakIndex = lightLeakIndex ?? _random.nextInt(42);
       try {
@@ -116,7 +86,6 @@ class ImageProcessor {
       }
     }
 
-    // ── Dust (v3 fix) ─────────────────────────────────────
     if (dustStrength > 0) {
       try {
         final data = await rootBundle.load(RetroAssets.textureDust);
@@ -141,7 +110,6 @@ class ImageProcessor {
           analogRandomness: analogRandomness,
           captureDate: captureDate ?? DateTime.now(),
           saveLocationData: saveLocationData,
-          grainBytes: grainBytes,
           scratchBytes: scratchBytes,
           leakBytes: leakBytes,
           dustBytes: dustBytes,
@@ -174,10 +142,6 @@ class ImageProcessor {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ISOLATE
-  // ═══════════════════════════════════════════════════════════════════════════
-
   static Uint8List _processImageBytesInIsolate(
     Uint8List originalBytes, {
     required FilmStock filmStock,
@@ -191,7 +155,6 @@ class ImageProcessor {
     required bool analogRandomness,
     required DateTime captureDate,
     required bool saveLocationData,
-    Uint8List? grainBytes,
     Uint8List? scratchBytes,
     Uint8List? leakBytes,
     Uint8List? dustBytes,
@@ -210,45 +173,43 @@ class ImageProcessor {
     }
 
     final effectiveGrain = grain ?? filmStock.baseGrain;
-    // For B&W films (saturation = 0.0), always enforce B&W regardless of override
     final effectiveSaturation =
         filmStock.saturation == 0.0
             ? 0.0
             : (saturationOverride ?? filmStock.saturation);
     final effectiveVignette = vignette ?? filmStock.baseVignette;
 
-    _applyFilmStockGrading(image, filmStock, effectiveSaturation);
-
-    // Grain
-    if (effectiveGrain > 0 && grainBytes != null) {
-      _applyTextureOverlay(image, grainBytes, effectiveGrain, false);
-    } else if (effectiveGrain > 0) {
-      _applyProceduralGrain(image, effectiveGrain, filmStock.coloredGrain);
+    if (filmStock.halation > 0) {
+      _applyHalation(image, filmStock.halation);
     }
 
-    // Vignette
+    _applyFilmStockGrading(image, filmStock, effectiveSaturation);
+
+    if (effectiveGrain > 0) {
+      _applyProceduralGrain(
+        image,
+        effectiveGrain,
+        filmStock.coloredGrain,
+        filmStock.grainSize,
+      );
+    }
+
     if (effectiveVignette > 0) {
       _applyVignette(image, effectiveVignette);
     }
 
-    // Scratches
     if (scratchLevel > 0 && scratchBytes != null) {
       _applyTextureOverlay(image, scratchBytes, scratchLevel, true);
     }
-
-    // Leaks
     if (leakBytes != null) {
       _applyTextureOverlay(image, leakBytes, leakStrength, true);
     }
-
-    // Dust
     if (dustBytes != null) {
       _applyTextureOverlay(image, dustBytes, dustStrength, true);
     }
 
-    // Procedural randomness (independent now)
     if (analogRandomness) {
-      _applyProceduralAnalogRandomness(image, filmStock);
+      _applyProceduralAnalogRandomness(image);
     }
 
     if (dateStampEnabled) {
@@ -258,153 +219,122 @@ class ImageProcessor {
     return Uint8List.fromList(img.encodeJpg(image, quality: 92));
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FILM STOCK COLOR GRADING  (fixed)
-  // ═══════════════════════════════════════════════════════════════════════════
+  static void _applyHalation(img.Image image, double intensity) {
+    final source = img.copyResize(
+      image,
+      width: image.width,
+      height: image.height,
+    );
+    final glow = intensity * 24.0;
+
+    for (int y = 1; y < image.height - 1; y++) {
+      for (int x = 1; x < image.width - 1; x++) {
+        final pixel = source.getPixel(x, y);
+        final r = pixel.r / 255.0;
+        final g = pixel.g / 255.0;
+        final b = pixel.b / 255.0;
+        final luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        final redBias = max(0.0, r - max(g, b) * 0.5);
+        final amount =
+            _smoothstep(0.78, 1.0, luminance) * (0.2 + redBias) * glow;
+        if (amount <= 0) continue;
+
+        for (final offset in const [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          final target = image.getPixel(x + offset[0], y + offset[1]);
+          target.r = (target.r + amount).round().clamp(0, 255);
+          target.g = (target.g + amount * 0.35).round().clamp(0, 255);
+          target.b = (target.b + amount * 0.06).round().clamp(0, 255);
+        }
+      }
+    }
+  }
 
   static void _applyFilmStockGrading(
     img.Image image,
     FilmStock stock,
     double saturation,
   ) {
-    final int width = image.width;
-    final int height = image.height;
-
     final redLUT = _buildGammaLUT(stock.redGamma);
     final greenLUT = _buildGammaLUT(stock.greenGamma);
     final blueLUT = _buildGammaLUT(stock.blueGamma);
+    final highlight = stock.highlightTint;
+    final shadow = stock.shadowTint;
 
-    // Pre-build a tone-mapping LUT (soft-knee rolloff above 200)
-    // This is the primary fix for the burnt look — highlights compress
-    // smoothly instead of hard-clipping at 255.
-    final toneLUT = _buildToneMappingLUT();
-
-    final hlR = stock.highlightTint.r;
-    final hlG = stock.highlightTint.g;
-    final hlB = stock.highlightTint.b;
-    final shR = stock.shadowTint.r;
-    final shG = stock.shadowTint.g;
-    final shB = stock.shadowTint.b;
-
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
         final pixel = image.getPixel(x, y);
-        double r = pixel.r.toDouble();
-        double g = pixel.g.toDouble();
-        double b = pixel.b.toDouble();
+        double r = pixel.r / 255.0;
+        double g = pixel.g / 255.0;
+        double b = pixel.b / 255.0;
 
-        // ── Temperature Shift (highlight-aware) ───────────────────────
-        // FIX: Scale by (1 - luminance) so bright pixels get less shift,
-        // preventing warm highlights from blowing out to pure white.
-        // Increased multiplier from 20 to 25 for stronger vintage warmth.
         if (stock.temperature != 0) {
-          final lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
-          final protection = 1.0 - (lum * lum); // Less shift in highlights
-          final t = stock.temperature * 25 * protection; // 25 for stronger effect
-          r = (r + t).clamp(0, 255);
-          b = (b - t).clamp(0, 255);
-          g = (g + t * 0.2).clamp(0, 255);
+          final luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+          final t =
+              stock.temperature *
+              (24.0 / 255.0) *
+              (1.0 - luminance * luminance);
+          r += t;
+          g += t * 0.18;
+          b -= t;
         }
 
-        // ── Per-Channel Gamma Curves ──────────────────────────────────
-        r = redLUT[r.round().clamp(0, 255)].toDouble();
-        g = greenLUT[g.round().clamp(0, 255)].toDouble();
-        b = blueLUT[b.round().clamp(0, 255)].toDouble();
+        r = redLUT[(r * 255.0).round().clamp(0, 255)] / 255.0;
+        g = greenLUT[(g * 255.0).round().clamp(0, 255)] / 255.0;
+        b = blueLUT[(b * 255.0).round().clamp(0, 255)] / 255.0;
 
-        // ── Saturation ────────────────────────────────────────────────
-        final lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        r = lum + (r - lum) * saturation;
-        g = lum + (g - lum) * saturation;
-        b = lum + (b - lum) * saturation;
+        final luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = luminance + (r - luminance) * saturation;
+        g = luminance + (g - luminance) * saturation;
+        b = luminance + (b - luminance) * saturation;
 
-        // ── Contrast (S-Curve — fixed) ────────────────────────────────
-        // FIX: Original formula used stock.contrast * 255 inside a ratio,
-        // which explodes at mid-range values. This uses the correct
-        // Photoshop-equivalent formula where contrast is a -1.0 to 1.0 value.
-        if (stock.contrast != 0) {
-          // Map contrast to the standard factor range
-          final c = stock.contrast.clamp(-1.0, 1.0);
-          final factor =
-              (c > 0)
-                  ? 1.0 +
-                      c *
-                          2.0 // Positive contrast: up to 3× stretch
-                  : 1.0 + c; // Negative contrast: down to 0 (flat)
-          r = (factor * (r - 128) + 128).clamp(0.0, 255.0);
-          g = (factor * (g - 128) + 128).clamp(0.0, 255.0);
-          b = (factor * (b - 128) + 128).clamp(0.0, 255.0);
-        }
+        r = _applyContrastCurve(r, stock.contrast);
+        g = _applyContrastCurve(g, stock.contrast);
+        b = _applyContrastCurve(b, stock.contrast);
 
-        // ── Brightness (highlight-protected) ─────────────────────────
-        // FIX: Instead of a flat add, scale the brightness addition by
-        // how much headroom the pixel has, so bright pixels can't burn.
         if (stock.brightness != 0) {
-          final brightnessAdd = stock.brightness * 255;
-          if (brightnessAdd > 0) {
-            // Headroom = how far the pixel is from 255
-            final headroomR = (255.0 - r) / 255.0;
-            final headroomG = (255.0 - g) / 255.0;
-            final headroomB = (255.0 - b) / 255.0;
-            r = (r + brightnessAdd * headroomR).clamp(0.0, 255.0);
-            g = (g + brightnessAdd * headroomG).clamp(0.0, 255.0);
-            b = (b + brightnessAdd * headroomB).clamp(0.0, 255.0);
+          if (stock.brightness > 0) {
+            r += stock.brightness * (1.0 - r);
+            g += stock.brightness * (1.0 - g);
+            b += stock.brightness * (1.0 - b);
           } else {
-            // Darkening — straight subtract is fine
-            r = (r + brightnessAdd).clamp(0.0, 255.0);
-            g = (g + brightnessAdd).clamp(0.0, 255.0);
-            b = (b + brightnessAdd).clamp(0.0, 255.0);
+            r += stock.brightness;
+            g += stock.brightness;
+            b += stock.brightness;
           }
         }
 
-        // ── Highlight / Shadow Tinting (capped) ──────────────────────
-        // FIX: Clamp tint target so we can't push a pixel above 240,
-        // preventing the tint from acting as accidental overexposure.
-        // Increased strengths from 0.4/0.25 to 0.5/0.35 for stronger vintage color casts.
         if (stock.tintStrength > 0) {
-          final luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
-          final highlightMask = luminance;
-          final shadowMask = 1.0 - luminance;
-          final ts = stock.tintStrength;
-
-          // Cap highlight tint target at 240 (not 255)
-          final capHlR = (hlR * 240.0);
-          final capHlG = (hlG * 240.0);
-          final capHlB = (hlB * 240.0);
-
-          r =
-              r +
-              (capHlR - r) * highlightMask * ts * 0.5 +
-              (shR * 255 - r) * shadowMask * ts * 0.35;
-          g =
-              g +
-              (capHlG - g) * highlightMask * ts * 0.5 +
-              (shG * 255 - g) * shadowMask * ts * 0.35;
-          b =
-              b +
-              (capHlB - b) * highlightMask * ts * 0.5 +
-              (shB * 255 - b) * shadowMask * ts * 0.35;
+          final tone = 0.299 * r + 0.587 * g + 0.114 * b;
+          final highlightMix =
+              _smoothstep(0.55, 0.92, tone) * stock.tintStrength;
+          final shadowMix =
+              (1.0 - _smoothstep(0.08, 0.45, tone)) * stock.tintStrength;
+          r = _mix(r, highlight.r / 255.0 * (240.0 / 255.0), highlightMix);
+          g = _mix(g, highlight.g / 255.0 * (240.0 / 255.0), highlightMix);
+          b = _mix(b, highlight.b / 255.0 * (240.0 / 255.0), highlightMix);
+          r = _mix(r, shadow.r / 255.0, shadowMix);
+          g = _mix(g, shadow.g / 255.0, shadowMix);
+          b = _mix(b, shadow.b / 255.0, shadowMix);
         }
 
-        // ── Shadow Lift (film base fog) ──────────────────────────────
-        // Lifts the black point so shadows never go to pure black.
-        // Formula: output = input * (1 - lift) + 255 * lift
-        // At lift=0.04 a pixel at 0 becomes ~10, matching real C-41 scan minimums.
         if (stock.shadowLift > 0) {
-          final lift = stock.shadowLift;
-          r = r * (1.0 - lift) + 255 * lift;
-          g = g * (1.0 - lift) + 255 * lift;
-          b = b * (1.0 - lift) + 255 * lift;
+          r += stock.shadowLift * pow(1.0 - r, 2.0).toDouble();
+          g += stock.shadowLift * pow(1.0 - g, 2.0).toDouble();
+          b += stock.shadowLift * pow(1.0 - b, 2.0).toDouble();
         }
 
-        // ── Soft-Knee Tone Mapping (primary burn fix) ─────────────────
-        pixel.r = toneLUT[r.round().clamp(0, 300)];
-        pixel.g = toneLUT[g.round().clamp(0, 300)];
-        pixel.b = toneLUT[b.round().clamp(0, 300)];
+        pixel.r = (_applyShoulder(r) * 255.0).round().clamp(0, 255);
+        pixel.g = (_applyShoulder(g) * 255.0).round().clamp(0, 255);
+        pixel.b = (_applyShoulder(b) * 255.0).round().clamp(0, 255);
       }
     }
   }
 
-  /// Standard gamma LUT (unchanged).
   static List<int> _buildGammaLUT(double gamma) {
     return List<int>.generate(256, (i) {
       final normalized = i / 255.0;
@@ -413,55 +343,65 @@ class ImageProcessor {
     });
   }
 
-  /// Soft-knee tone-mapping LUT (301 entries to safely handle overflows).
-  ///
-  /// Values 0–200 pass through linearly.
-  /// Values 200–300+ compress into 200–255 using a smooth shoulder curve,
-  /// mimicking how real film rolls off in the highlights rather than clipping.
-  static List<int> _buildToneMappingLUT() {
-    return List<int>.generate(301, (i) {
-      if (i <= 200) return i; // Linear pass-through in shadows/midtones
-      // Shoulder: compress 200–300 range into 200–255
-      final t = (i - 200) / 100.0; // 0.0 at 200, 1.0 at 300
-      final compressed = 200 + 55 * (1.0 - exp(-t * 2.5));
-      return compressed.round().clamp(0, 255);
-    });
+  static double _applyContrastCurve(double value, double contrast) {
+    final x = value.clamp(0.0, 1.5);
+    if (contrast >= 0) {
+      final curve =
+          x < 0.5 ? 2.0 * x * x : 1.0 - 2.0 * pow(1.0 - x, 2.0).toDouble();
+      return _mix(x, curve, contrast.clamp(0.0, 1.0));
+    }
+    return 0.5 + (x - 0.5) * (1.0 + contrast.clamp(-1.0, 0.0));
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FILM GRAIN  (fixed)
-  // ═══════════════════════════════════════════════════════════════════════════
+  static double _applyShoulder(double value) {
+    final x = value.clamp(0.0, 1.5);
+    if (x <= 200.0 / 255.0) return x;
+    final t = ((x - 200.0 / 255.0) / (55.0 / 255.0)).clamp(0.0, 2.0);
+    final shoulder = (t * 1.35) / (1.0 + 0.35 * t);
+    return (200.0 / 255.0) + (55.0 / 255.0) * shoulder.clamp(0.0, 1.0);
+  }
+
+  static double _smoothstep(double edge0, double edge1, double x) {
+    final t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+  }
+
+  static double _mix(double a, double b, double t) => a + (b - a) * t;
 
   static void _applyProceduralGrain(
     img.Image image,
     double intensity,
     bool colored,
+    double grainSize,
   ) {
-    // FIX: Reduce max noise from 60 → 45 and clamp per-pixel by luminance
-    // so shadow grain stays visible but bright areas aren't pushed to white.
-    final maxNoise = (intensity * 45).round();
-    if (maxNoise == 0) return;
+    final scale = 3.4 * grainSize.clamp(0.5, 2.0);
+    final amount = intensity * 38.0;
 
     for (int y = 0; y < image.height; y++) {
       for (int x = 0; x < image.width; x++) {
         final pixel = image.getPixel(x, y);
         final luminance =
             (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b) / 255.0;
-
-        // Grain intensity scales down in highlights (realistic film behaviour)
-        final grainScale = 1.0 - (luminance * 0.5);
-        final scaledMax = (maxNoise * grainScale).round();
-        if (scaledMax == 0) continue;
+        final visibility = 0.35 + (1.0 - luminance) * 0.65;
+        final baseNoise =
+            (_noise(x / scale, y / scale) - 0.5) * amount * visibility;
 
         if (colored) {
-          final noiseR = _random.nextInt(scaledMax * 2) - scaledMax;
-          final noiseG = _random.nextInt(scaledMax * 2) - scaledMax;
-          final noiseB = _random.nextInt(scaledMax * 2) - scaledMax;
-          pixel.r = (pixel.r + noiseR).clamp(0, 255);
-          pixel.g = (pixel.g + noiseG).clamp(0, 255);
-          pixel.b = (pixel.b + noiseB).clamp(0, 255);
+          final noiseG =
+              (_noise(x / scale + 11.0, y / scale + 7.0) - 0.5) *
+              amount *
+              0.85 *
+              visibility;
+          final noiseB =
+              (_noise(x / scale + 23.0, y / scale + 19.0) - 0.5) *
+              amount *
+              1.1 *
+              visibility;
+          pixel.r = (pixel.r + baseNoise).round().clamp(0, 255);
+          pixel.g = (pixel.g + noiseG).round().clamp(0, 255);
+          pixel.b = (pixel.b + noiseB).round().clamp(0, 255);
         } else {
-          final noise = _random.nextInt(scaledMax * 2) - scaledMax;
+          final noise = baseNoise.round();
           pixel.r = (pixel.r + noise).clamp(0, 255);
           pixel.g = (pixel.g + noise).clamp(0, 255);
           pixel.b = (pixel.b + noise).clamp(0, 255);
@@ -470,9 +410,10 @@ class ImageProcessor {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // VIGNETTE  (unchanged — was fine)
-  // ═══════════════════════════════════════════════════════════════════════════
+  static double _noise(double x, double y) {
+    final value = sin(x * 12.9898 + y * 78.233) * 43758.5453;
+    return value - value.floorToDouble();
+  }
 
   static void _applyVignette(img.Image image, double intensity) {
     final cx = image.width / 2.0;
@@ -484,10 +425,8 @@ class ImageProcessor {
         final dx = x - cx;
         final dy = y - cy;
         final dist = sqrt(dx * dx + dy * dy) / maxDist;
-
         final vignetteAmount = (dist - 0.4).clamp(0.0, 1.0) * intensity;
         final factor = 1.0 - vignetteAmount;
-
         final pixel = image.getPixel(x, y);
         pixel.r = (pixel.r * factor).round().clamp(0, 255);
         pixel.g = (pixel.g * factor).round().clamp(0, 255);
@@ -496,14 +435,7 @@ class ImageProcessor {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ANALOG RANDOMNESS  (unchanged)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  static void _applyProceduralAnalogRandomness(
-    img.Image image,
-    FilmStock stock,
-  ) {
+  static void _applyProceduralAnalogRandomness(img.Image image) {
     final roll = _random.nextDouble();
     if (roll < 0.3) {
       _applyLightStreak(image);
@@ -518,7 +450,7 @@ class ImageProcessor {
     final y0 = _random.nextInt(image.height);
     final bandHeight = 20 + _random.nextInt(40);
     final streakColor =
-        [
+        const [
           [255, 180, 50],
           [255, 220, 100],
           [255, 130, 80],
@@ -527,9 +459,7 @@ class ImageProcessor {
 
     for (int y = y0; y < min(y0 + bandHeight, image.height); y++) {
       final distFromCenter = (y - y0 - bandHeight / 2).abs() / (bandHeight / 2);
-      // FIX: Reduced max opacity from 0.15 → 0.10 so streaks are subtler
       final opacity = (1.0 - distFromCenter) * 0.10;
-
       for (int x = 0; x < image.width; x++) {
         final pixel = image.getPixel(x, y);
         pixel.r = (pixel.r + (streakColor[0] - pixel.r.toInt()) * opacity)
@@ -567,9 +497,7 @@ class ImageProcessor {
     for (int y = 0; y < image.height; y++) {
       for (int i = 0; i < bandWidth; i++) {
         final x = fromRight ? image.width - 1 - i : i;
-        // FIX: Reduced max opacity from 0.2 → 0.12
         final opacity = (1.0 - i / bandWidth) * 0.12;
-
         final pixel = image.getPixel(x, y);
         pixel.r = (pixel.r + (255 - pixel.r.toInt()) * opacity).round().clamp(
           0,
@@ -586,10 +514,6 @@ class ImageProcessor {
       }
     }
   }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DATE STAMP  (unchanged)
-  // ═══════════════════════════════════════════════════════════════════════════
 
   static void _drawDateStamp(
     img.Image image,
@@ -633,13 +557,6 @@ class ImageProcessor {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEXTURE OVERLAY  (fixed)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  /// Composites a PNG asset over the base image.
-  ///
-  /// [screenBlend] — true = Screen (light leaks/dust), false = Multiply (grain).
   static void _applyTextureOverlay(
     img.Image image,
     Uint8List bytes,
@@ -661,9 +578,6 @@ class ImageProcessor {
       for (int x = 0; x < image.width; x++) {
         final basePixel = image.getPixel(x, y);
         final overPixel = resizedOverlay.getPixel(x, y);
-
-        // FIX: Multiply alpha by 0.5 cap for screen blend so light overlays
-        // can't fully saturate highlights even at strength = 1.0.
         final rawAlpha = (overPixel.a / 255.0) * strength;
         final alpha = screenBlend ? rawAlpha * 0.5 : rawAlpha;
 
@@ -676,12 +590,10 @@ class ImageProcessor {
         final ob = overPixel.b / 255.0;
 
         if (screenBlend) {
-          // Screen blend — conservative, won't clip highlights
           r = 1.0 - (1.0 - r) * (1.0 - or * alpha);
           g = 1.0 - (1.0 - g) * (1.0 - og * alpha);
           b = 1.0 - (1.0 - b) * (1.0 - ob * alpha);
         } else {
-          // Multiply blend for grain — FIX: removed 1.5× amplifier
           r = r * (1.0 - alpha) + (r * or) * alpha;
           g = g * (1.0 - alpha) + (g * og) * alpha;
           b = b * (1.0 - alpha) + (b * ob) * alpha;
@@ -693,10 +605,6 @@ class ImageProcessor {
       }
     }
   }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EXPORT HELPERS  (unchanged)
-  // ═══════════════════════════════════════════════════════════════════════════
 
   static Future<File> createPolaroidFrame(
     File imageFile, {
@@ -718,10 +626,8 @@ class ImageProcessor {
     img.fill(framed, color: img.ColorRgb8(245, 245, 240));
     img.compositeImage(framed, original, dstX: borderSide, dstY: borderTop);
 
-    // Filter Name (Right side)
     if (filterName != null) {
       final nameStr = filterName.toUpperCase();
-      // Draw with slightly larger font and darker color
       img.drawString(
         framed,
         nameStr,
@@ -732,7 +638,6 @@ class ImageProcessor {
       );
     }
 
-    // Watermark (Left side)
     img.drawString(
       framed,
       RetroStrings.watermark,

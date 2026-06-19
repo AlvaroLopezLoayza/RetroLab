@@ -69,7 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     HiveService.setDarkMode(v);
                     widget.onThemeChanged();
                   },
-                  activeColor: RetroColors.accent,
+                  activeThumbColor: RetroColors.accent,
                 ),
               ),
               const Divider(),
@@ -86,7 +86,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     setState(() => _analogRandomness = v);
                     HiveService.setAnalogRandomness(v);
                   },
-                  activeColor: RetroColors.accent,
+                  activeThumbColor: RetroColors.accent,
                 ),
               ),
               const Divider(),
@@ -131,7 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     setState(() => _saveLocationData = v);
                     HiveService.setSaveLocationData(v);
                   },
-                  activeColor: RetroColors.accent,
+                  activeThumbColor: RetroColors.accent,
                 ),
               ),
               const Divider(),

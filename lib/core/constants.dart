@@ -106,7 +106,6 @@ class RetroAssets {
   static const String lottieDeveloping = 'assets/lottie/developing.json';
   static const String lottieFilmReel = 'assets/lottie/film_reel.json';
   static const String soundShutter = 'assets/sounds/shutter.mp3';
-  static const String textureGrain = 'assets/textures/grain.png';
   static const String textureScratch = 'assets/textures/scratch.png';
   static const String textureDust = 'assets/textures/dust.png';
 

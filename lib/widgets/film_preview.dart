@@ -39,17 +39,12 @@ class _FilmPreviewState extends State<FilmPreview> {
   static final Map<String, Future<ui.Image>> _images = {};
 
   ui.FragmentShader? _shader;
-  ui.Image? _grain;
   ui.Image? _leak;
   ui.Image? _dust;
   ui.Image? _scratch;
 
   bool get _ready =>
-      _shader != null &&
-      _grain != null &&
-      _leak != null &&
-      _dust != null &&
-      _scratch != null;
+      _shader != null && _leak != null && _dust != null && _scratch != null;
 
   @override
   void initState() {
@@ -68,7 +63,6 @@ class _FilmPreviewState extends State<FilmPreview> {
   Future<void> _load() async {
     try {
       final images = await Future.wait([
-        _image(RetroAssets.textureGrain),
         _image(RetroAssets.textureDust),
         _image(RetroAssets.textureScratch),
         _image(RetroAssets.lightLeak(widget.lightLeakIndex)),
@@ -83,10 +77,9 @@ class _FilmPreviewState extends State<FilmPreview> {
       if (!mounted) return;
       setState(() {
         _shader = shader;
-        _grain = images[0];
-        _dust = images[1];
-        _scratch = images[2];
-        _leak = images[3];
+        _dust = images[0];
+        _scratch = images[1];
+        _leak = images[2];
       });
     } catch (error) {
       debugPrint('[RetroLab] Film preview shader unavailable: $error');
@@ -96,7 +89,9 @@ class _FilmPreviewState extends State<FilmPreview> {
   Future<void> _loadLeak() async {
     try {
       final image = await _image(RetroAssets.lightLeak(widget.lightLeakIndex));
-      if (mounted) setState(() => _leak = image);
+      if (mounted) {
+        setState(() => _leak = image);
+      }
     } catch (error) {
       debugPrint('[RetroLab] Film preview leak unavailable: $error');
     }
@@ -144,19 +139,21 @@ class _FilmPreviewState extends State<FilmPreview> {
       shadow.g,
       shadow.b,
       widget.grain,
+      stock.grainSize,
+      stock.coloredGrain ? 1.0 : 0.0,
       widget.vignette,
       widget.scratchLevel,
       widget.leakStrength,
       widget.dustStrength,
+      stock.halation,
     ];
     for (var i = 0; i < values.length; i++) {
       shader.setFloat(i + 2, values[i]);
     }
     shader
-      ..setImageSampler(1, _grain!, filterQuality: FilterQuality.low)
-      ..setImageSampler(2, _scratch!, filterQuality: FilterQuality.low)
-      ..setImageSampler(3, _leak!, filterQuality: FilterQuality.low)
-      ..setImageSampler(4, _dust!, filterQuality: FilterQuality.low);
+      ..setImageSampler(1, _scratch!, filterQuality: FilterQuality.low)
+      ..setImageSampler(2, _leak!, filterQuality: FilterQuality.low)
+      ..setImageSampler(3, _dust!, filterQuality: FilterQuality.low);
 
     return ImageFiltered(
       imageFilter: ui.ImageFilter.shader(shader),
@@ -171,9 +168,6 @@ class _FilmPreviewState extends State<FilmPreview> {
         child: widget.child,
       ),
     ];
-    if (_grain != null && widget.grain > 0) {
-      layers.add(_texture(_grain!, widget.grain, BlendMode.multiply));
-    }
     if (_scratch != null && widget.scratchLevel > 0) {
       layers.add(
         _texture(_scratch!, widget.scratchLevel * 0.5, BlendMode.screen),
