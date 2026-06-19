@@ -118,6 +118,7 @@ class HiveBoxes {
   HiveBoxes._();
 
   static const String photos = 'retro_photos';
+  static const String videos = 'retro_videos';
   static const String rolls = 'film_rolls';
   static const String settings = 'app_settings';
   static const String stats = 'user_stats';

@@ -29,6 +29,7 @@ import '../core/constants.dart';
 import '../core/film_stocks.dart';
 import '../core/hive_boxes.dart';
 import '../models/film_roll.dart';
+import '../utils/video_processor.dart';
 import '../widgets/film_preview.dart';
 import '../widgets/film_stock_selector.dart';
 import '../widgets/retro_slider.dart';
@@ -36,6 +37,9 @@ import '../widgets/shutter_button.dart';
 import '../widgets/viewfinder_overlay.dart';
 import 'lab_screen.dart';
 import 'processing_screen.dart';
+import 'video_processing_screen.dart';
+
+enum CaptureMode { photo, video }
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -51,6 +55,11 @@ class _CameraScreenState extends State<CameraScreen>
   List<CameraDescription> _cameras = [];
   int _currentCameraIndex = 0;
   bool _isCameraReady = false;
+  CaptureMode _captureMode = CaptureMode.photo;
+  bool _isRecordingVideo = false;
+  bool _isProcessingVideo = false;
+  int _recordingSeconds = 0;
+  Timer? _recordingTimer;
 
   // ── Film State ─────────────────────────────────────────────────────────
   FilmStock _selectedStock = FilmStocks.kodakGold200;
@@ -94,6 +103,10 @@ class _CameraScreenState extends State<CameraScreen>
   // Pre-decoded ui.Image objects for real-time overlay rendering.
   // Stored as ui.Image (not raw bytes) to avoid expensive decoding on every paint.
 
+  bool get _videoSupported => Platform.isAndroid;
+  bool get _isVideoMode => _captureMode == CaptureMode.video;
+  bool get _isBusy => _isCapturing || _isProcessingVideo;
+
   @override
   void initState() {
     super.initState();
@@ -120,6 +133,7 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _recordingTimer?.cancel();
     _cameraController?.dispose();
     _audioPlayer.dispose();
     _focusAnimController.dispose();
@@ -144,6 +158,9 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
     if (state == AppLifecycleState.inactive) {
+      if (_isRecordingVideo) {
+        _stopVideoRecording(fromLifecycle: true);
+      }
       _cameraController?.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initCamera();
@@ -229,11 +246,14 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _setupCamera(CameraDescription camera) async {
+    if (mounted) {
+      setState(() => _isCameraReady = false);
+    }
     _cameraController?.dispose();
     _cameraController = CameraController(
       camera,
       ResolutionPreset.high,
-      enableAudio: false,
+      enableAudio: _isVideoMode,
       imageFormatGroup: ImageFormatGroup.jpeg,
     );
     try {
@@ -290,6 +310,38 @@ class _CameraScreenState extends State<CameraScreen>
     });
   }
 
+  Future<bool> _ensureMicrophonePermission() async {
+    final status = await Permission.microphone.request();
+    if (status.isGranted) return true;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Se requiere micrófono para grabar video.')),
+      );
+    }
+    return false;
+  }
+
+  Future<void> _setCaptureMode(CaptureMode mode) async {
+    if (!_videoSupported && mode == CaptureMode.video) return;
+    if (_captureMode == mode || _isBusy || _isRecordingVideo) return;
+    if (mode == CaptureMode.video && !await _ensureMicrophonePermission()) {
+      return;
+    }
+    setState(() {
+      _captureMode = mode;
+      _showControls = false;
+      _showFilmSelector = false;
+      _timerCountdown = 0;
+      if (mode == CaptureMode.video) {
+        _isBurstMode = false;
+        _shutterTimer = ShutterTimer.off;
+      }
+    });
+    if (_cameras.isNotEmpty) {
+      await _setupCamera(_cameras[_currentCameraIndex]);
+    }
+  }
+
   /// Handle tap-to-focus on the camera preview.
   /// Sets focus point and shows animated focus indicator.
   Future<void> _handleTapToFocus(TapDownDetails details) async {
@@ -329,7 +381,15 @@ class _CameraScreenState extends State<CameraScreen>
   // ── Capture Logic ──────────────────────────────────────────────────────
 
   Future<void> _onShutterPressed() async {
-    if (_isCapturing) return;
+    if (_isBusy) return;
+    if (_isVideoMode) {
+      if (_isRecordingVideo) {
+        await _stopVideoRecording();
+      } else {
+        await _startVideoRecording();
+      }
+      return;
+    }
     if (_currentRoll.isFinished) {
       _showFilmFinishedDialog();
       return;
@@ -353,6 +413,86 @@ class _CameraScreenState extends State<CameraScreen>
       }
     } else {
       await _capturePhoto();
+    }
+  }
+
+  Future<void> _startVideoRecording() async {
+    if (!_isCameraReady || _cameraController == null) return;
+    setState(() {
+      _isRecordingVideo = true;
+      _recordingSeconds = 0;
+      _showControls = false;
+      _showFilmSelector = false;
+    });
+    try {
+      await _cameraController!.startVideoRecording();
+      _recordingTimer?.cancel();
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) return;
+        final next = _recordingSeconds + 1;
+        if (next >= 30) {
+          _stopVideoRecording();
+          return;
+        }
+        setState(() => _recordingSeconds = next);
+      });
+    } catch (e) {
+      _recordingTimer?.cancel();
+      if (mounted) {
+        setState(() => _isRecordingVideo = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al iniciar video: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopVideoRecording({bool fromLifecycle = false}) async {
+    if (_cameraController == null || !_isRecordingVideo) return;
+    _recordingTimer?.cancel();
+    setState(() {
+      _isRecordingVideo = false;
+      _isProcessingVideo = !fromLifecycle;
+    });
+    try {
+      final xFile = await _cameraController!.stopVideoRecording();
+      if (fromLifecycle || !mounted) return;
+      final settings = VideoEffectSettings(
+        stock: _selectedStock,
+        grain: _grain,
+        leakStrength: _leakStrength,
+        dustStrength: _dustStrength,
+        lightLeakIndex: _lightLeakIndex,
+        saturation: _saturation,
+        vignette: _vignette,
+        scratchLevel: _scratchLevel,
+      );
+      final videoId = DateTime.now().millisecondsSinceEpoch.toString();
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) {
+            return VideoProcessingScreen(
+              rawFile: File(xFile.path),
+              videoId: videoId,
+              settings: settings,
+            );
+          },
+        ),
+      );
+    } catch (e) {
+      if (!fromLifecycle && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al detener video: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingVideo = false;
+          _recordingSeconds = 0;
+        });
+      }
     }
   }
 
@@ -446,13 +586,16 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _flipCamera() {
-    if (_cameras.length < 2) return;
+    if (_cameras.length < 2 || _isRecordingVideo) return;
     _currentCameraIndex = (_currentCameraIndex + 1) % _cameras.length;
     _setupCamera(_cameras[_currentCameraIndex]);
   }
 
   void _cycleFlash() {
-    final modes = [FlashMode.off, FlashMode.auto, FlashMode.always];
+    final modes =
+        _isVideoMode
+            ? [FlashMode.off, FlashMode.torch]
+            : [FlashMode.off, FlashMode.auto, FlashMode.always];
     final currentIndex = modes.indexOf(_flashMode);
     _flashMode = modes[(currentIndex + 1) % modes.length];
     _cameraController?.setFlashMode(_flashMode);
@@ -460,6 +603,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _cycleTimer() {
+    if (_isVideoMode) return;
     final timers = ShutterTimer.values;
     setState(() {
       _shutterTimer =
@@ -602,10 +746,51 @@ class _CameraScreenState extends State<CameraScreen>
           Positioned.fill(
             child: ViewfinderOverlay(
               filmStock: _selectedStock,
-              remainingExposures: _currentRoll.remainingExposures,
+              remainingExposures:
+                  _isVideoMode ? 0 : _currentRoll.remainingExposures,
               showGrid: _showGrid,
             ),
           ),
+
+          if (_isRecordingVideo)
+            Positioned(
+              top: 56,
+              left: 16,
+              child: SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
+                    border: Border.all(color: RetroColors.error),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: RetroColors.error,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _recordingLabel,
+                        style: GoogleFonts.spaceMono(
+                          color: RetroColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // ── Timer Countdown ────────────────────────────────────────────
           if (_timerCountdown > 0)
@@ -701,14 +886,15 @@ class _CameraScreenState extends State<CameraScreen>
                     _iconButton(
                       Icons.timer,
                       _cycleTimer,
-                      active: _shutterTimer != ShutterTimer.off,
+                      active:
+                          !_isVideoMode && _shutterTimer != ShutterTimer.off,
                       label: _shutterTimer.label,
                       tooltip: 'Temporizador',
                     ),
                     _iconButton(
                       Icons.burst_mode,
                       () => setState(() => _isBurstMode = !_isBurstMode),
-                      active: _isBurstMode,
+                      active: !_isVideoMode && _isBurstMode,
                       tooltip: 'Modo Ráfaga',
                     ),
                   ],
@@ -725,9 +911,49 @@ class _CameraScreenState extends State<CameraScreen>
 
   IconData get _flashIcon => switch (_flashMode) {
     FlashMode.auto => Icons.flash_auto,
+    FlashMode.torch => Icons.flashlight_on,
     FlashMode.always => Icons.flash_on,
     _ => Icons.flash_off,
   };
+
+  String get _recordingLabel {
+    final minutes = (_recordingSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (_recordingSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  Widget _modeButton(CaptureMode mode, String label) {
+    final active = _captureMode == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap:
+            _isBusy || _isRecordingVideo ? null : () => _setCaptureMode(mode),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color:
+                active
+                    ? RetroColors.accent.withValues(alpha: 0.2)
+                    : RetroColors.surface,
+            borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
+            border: Border.all(
+              color: active ? RetroColors.accent : RetroColors.surfaceLight,
+            ),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.spaceMono(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: active ? RetroColors.accent : RetroColors.textSecondary,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _iconButton(
     IconData icon,
@@ -741,7 +967,7 @@ class _CameraScreenState extends State<CameraScreen>
       child: Tooltip(
         message: tooltip ?? '',
         child: GestureDetector(
-          onTap: onPressed,
+          onTap: _isRecordingVideo ? null : onPressed,
           child: Container(
             width: 48,
             height: 48,
@@ -869,7 +1095,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   Widget _buildBottomBar() {
     return Container(
-      height: 150,
+      height: 196,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -885,53 +1111,75 @@ class _CameraScreenState extends State<CameraScreen>
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            crossAxisAlignment: CrossAxisAlignment.center,
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _bottomAction(
-                icon: Icons.photo_library_outlined,
-                label: 'LAB',
-                onTap:
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LabScreen()),
-                    ),
+              Row(
+                children: [
+                  _modeButton(CaptureMode.photo, 'FOTO'),
+                  if (_videoSupported) ...[
+                    const SizedBox(width: 8),
+                    _modeButton(CaptureMode.video, 'VIDEO'),
+                  ],
+                ],
               ),
-              _bottomAction(
-                icon: _selectedStock.icon,
-                label: 'FILM',
-                onTap:
-                    () => setState(() {
-                      _showFilmSelector = !_showFilmSelector;
-                      _showControls = false;
-                      if (_showFilmSelector) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _scrollToSelectedFilm();
-                        });
-                      }
-                    }),
-                active: _showFilmSelector,
-              ),
-              ShutterButton(
-                onPressed: _onShutterPressed,
-                enabled: !_isCapturing && _isCameraReady,
-              ),
-              _bottomAction(
-                icon: Icons.tune,
-                label: 'FX',
-                onTap:
-                    () => setState(() {
-                      _showControls = !_showControls;
-                      _showFilmSelector = false;
-                    }),
-                active: _showControls,
-              ),
-              _bottomAction(
-                icon: Icons.add_photo_alternate_outlined,
-                label: 'IMPORTAR',
-                onTap: _importFromGallery,
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _bottomAction(
+                    icon: Icons.photo_library_outlined,
+                    label: 'LAB',
+                    onTap:
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LabScreen()),
+                        ),
+                  ),
+                  _bottomAction(
+                    icon: _selectedStock.icon,
+                    label: 'FILM',
+                    onTap:
+                        () => setState(() {
+                          _showFilmSelector = !_showFilmSelector;
+                          _showControls = false;
+                          if (_showFilmSelector) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _scrollToSelectedFilm();
+                            });
+                          }
+                        }),
+                    active: _showFilmSelector,
+                    enabled: !_isRecordingVideo && !_isBusy,
+                  ),
+                  ShutterButton(
+                    onPressed: _onShutterPressed,
+                    enabled: !_isBusy && _isCameraReady,
+                    recording: _isRecordingVideo,
+                  ),
+                  _bottomAction(
+                    icon: Icons.tune,
+                    label: 'FX',
+                    onTap:
+                        () => setState(() {
+                          _showControls = !_showControls;
+                          _showFilmSelector = false;
+                        }),
+                    active: _showControls,
+                    enabled: !_isRecordingVideo && !_isBusy,
+                  ),
+                  _bottomAction(
+                    icon:
+                        _isVideoMode
+                            ? Icons.videocam_outlined
+                            : Icons.add_photo_alternate_outlined,
+                    label: _isVideoMode ? '30s' : 'IMPORTAR',
+                    onTap: _isVideoMode ? () {} : _importFromGallery,
+                    enabled: !_isVideoMode && !_isRecordingVideo && !_isBusy,
+                  ),
+                ],
               ),
             ],
           ),
@@ -945,9 +1193,10 @@ class _CameraScreenState extends State<CameraScreen>
     required String label,
     required VoidCallback onTap,
     bool active = false,
+    bool enabled = true,
   }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: 60,
@@ -959,7 +1208,12 @@ class _CameraScreenState extends State<CameraScreen>
             Icon(
               icon,
               size: 24,
-              color: active ? RetroColors.accent : RetroColors.textSecondary,
+              color:
+                  !enabled
+                      ? RetroColors.textMuted
+                      : active
+                      ? RetroColors.accent
+                      : RetroColors.textSecondary,
             ),
             const SizedBox(height: 4),
             Text(
@@ -967,7 +1221,12 @@ class _CameraScreenState extends State<CameraScreen>
               style: GoogleFonts.spaceMono(
                 fontSize: 8,
                 fontWeight: FontWeight.w700,
-                color: active ? RetroColors.accent : RetroColors.textMuted,
+                color:
+                    !enabled
+                        ? RetroColors.textMuted.withValues(alpha: 0.5)
+                        : active
+                        ? RetroColors.accent
+                        : RetroColors.textMuted,
                 letterSpacing: 1,
               ),
             ),

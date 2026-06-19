@@ -13,12 +13,14 @@ class ShutterButton extends StatefulWidget {
   final VoidCallback onPressed;
   final bool enabled;
   final double size;
+  final bool recording;
 
   const ShutterButton({
     super.key,
     required this.onPressed,
     this.enabled = true,
     this.size = 80,
+    this.recording = false,
   });
 
   @override
@@ -119,13 +121,22 @@ class _ShutterButtonState extends State<ShutterButton>
                     width: widget.size * 0.75,
                     height: widget.size * 0.75,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      shape:
+                          widget.recording
+                              ? BoxShape.rectangle
+                              : BoxShape.circle,
+                      borderRadius:
+                          widget.recording
+                              ? BorderRadius.circular(widget.size * 0.16)
+                              : null,
                       color:
                           widget.enabled
-                              ? RetroColors.accent
+                              ? (widget.recording
+                                  ? RetroColors.error
+                                  : RetroColors.accent)
                               : RetroColors.textMuted,
                       gradient:
-                          widget.enabled
+                          widget.enabled && !widget.recording
                               ? const RadialGradient(
                                 colors: [
                                   RetroColors.accentLight,

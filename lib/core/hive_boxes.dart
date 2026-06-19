@@ -10,6 +10,7 @@ class HiveService {
   HiveService._();
 
   static late Box<Map> photosBox;
+  static late Box<Map> videosBox;
   static late Box<Map> rollsBox;
   static late Box settingsBox;
   static late Box statsBox;
@@ -19,6 +20,7 @@ class HiveService {
     await Hive.initFlutter();
 
     photosBox = await Hive.openBox<Map>(HiveBoxes.photos);
+    videosBox = await Hive.openBox<Map>(HiveBoxes.videos);
     rollsBox = await Hive.openBox<Map>(HiveBoxes.rolls);
     settingsBox = await Hive.openBox(HiveBoxes.settings);
     statsBox = await Hive.openBox(HiveBoxes.stats);
