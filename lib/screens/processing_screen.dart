@@ -1,9 +1,3 @@
-/// ─────────────────────────────────────────────────────────────────────────────
-/// RetroLab — Processing Screen
-///
-/// "DEVELOPING..." screen shown while the image is being processed.
-/// Displays a film reel animation and a fake developing timer.
-/// ─────────────────────────────────────────────────────────────────────────────
 library;
 
 import 'dart:async';
@@ -70,10 +64,12 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
     'ALMOST READY...',
   ];
 
+  String get _rollSummary =>
+      '${widget.roll.usedExposures + 1}/${widget.roll.totalExposures}';
+
   @override
   void initState() {
     super.initState();
-
     _startProcessing();
     _startFakeProgress();
   }
@@ -104,6 +100,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
 
   Future<void> _startProcessing() async {
     try {
+      final capturedAt = DateTime.now();
       final result = await ImageProcessor.processRetroImage(
         widget.originalFile,
         filmStock: widget.filmStock,
@@ -115,6 +112,8 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
         vignette: widget.vignette,
         scratchLevel: widget.scratchLevel,
         analogRandomness: HiveService.analogRandomnessEnabled,
+        artifactSeed: widget.photoId.hashCode,
+        captureDate: capturedAt,
         dateStampStyle: DateStampStyle.values.firstWhere(
           (s) => s.name == HiveService.dateStampStyle,
           orElse: () => DateStampStyle.classic90s,
@@ -126,14 +125,13 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
         saveLocationData: HiveService.saveLocationDataEnabled,
       );
 
-      // Save photo metadata to Hive
       final photo = RetroPhoto(
         id: widget.photoId,
         originalPath: widget.originalFile.path,
         processedPath: result.file.path,
         filmStockId: widget.filmStock.id,
         rollId: widget.roll.id,
-        capturedAt: DateTime.now(),
+        capturedAt: capturedAt,
         grain: widget.grain,
         leakStrength: widget.leakStrength,
         dustStrength: widget.dustStrength,
@@ -147,7 +145,6 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
       );
       await HiveService.photosBox.put(photo.id, photo.toMap());
 
-      // Ensure minimum display time for the developing experience
       await Future.delayed(const Duration(milliseconds: 800));
 
       if (!mounted) return;
@@ -161,7 +158,6 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
 
       if (!mounted) return;
 
-      // Navigate to preview
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder:
@@ -185,87 +181,129 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
         children: [
           const Positioned.fill(child: GrainOverlay(opacity: 0.05)),
           Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // ── Film Reel Animation ──────────────────────────────────
-                Lottie.asset(
-                  RetroAssets.lottieDeveloping,
-                  height: 120,
-                  reverse: true,
-                ),
-                const SizedBox(height: 40),
-
-                // ── DEVELOPING... Text ───────────────────────────────────
-                Text(
-                  RetroStrings.developing,
-                  style: GoogleFonts.spaceMono(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: RetroColors.accent,
-                    letterSpacing: 6,
+            child: Padding(
+              padding: const EdgeInsets.all(RetroDimens.paddingLg),
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxWidth: 420),
+                padding: const EdgeInsets.all(RetroDimens.paddingLg),
+                decoration: BoxDecoration(
+                  color: RetroColors.surface.withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
                   ),
                 ),
-                const SizedBox(height: 12),
-
-                // ── Status Text ──────────────────────────────────────────
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: Text(
-                    _statusText,
-                    key: ValueKey(_statusText),
-                    style: GoogleFonts.spaceMono(
-                      fontSize: 11,
-                      color: RetroColors.textMuted,
-                      letterSpacing: 2,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _statusChip(
+                          widget.filmStock.shortName,
+                          widget.filmStock.badgeColor,
+                        ),
+                        _statusChip(
+                          'ROLL $_rollSummary',
+                          RetroColors.dateYellow,
+                        ),
+                        _statusChip(
+                          widget.isImported ? 'IMPORT' : 'CAMERA',
+                          RetroColors.accent,
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-
-                // ── Progress Bar ─────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 64),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _progressValue,
-                      backgroundColor: RetroColors.surfaceLight,
-                      valueColor: const AlwaysStoppedAnimation(
-                        RetroColors.accent,
+                    const SizedBox(height: 24),
+                    Lottie.asset(
+                      RetroAssets.lottieDeveloping,
+                      height: 120,
+                      reverse: true,
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      RetroStrings.developing,
+                      style: GoogleFonts.spaceMono(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: RetroColors.accent,
+                        letterSpacing: 4,
                       ),
-                      minHeight: 4,
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Building the final frame with the selected film response.',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: RetroColors.textSecondary,
+                        height: 1.45,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 18),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: Text(
+                        _statusText,
+                        key: ValueKey(_statusText),
+                        style: GoogleFonts.spaceMono(
+                          fontSize: 11,
+                          color: RetroColors.textMuted,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: _progressValue,
+                        backgroundColor: RetroColors.surfaceLight,
+                        valueColor: const AlwaysStoppedAnimation(
+                          RetroColors.accent,
+                        ),
+                        minHeight: 8,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '${(_progressValue * 100).round()}%',
+                        style: GoogleFonts.spaceMono(
+                          fontSize: 11,
+                          color: RetroColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-
-                // ── Film Stock Badge ─────────────────────────────────────
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: widget.filmStock.badgeColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
-                    border: Border.all(
-                      color: widget.filmStock.badgeColor.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Text(
-                    widget.filmStock.name,
-                    style: GoogleFonts.spaceMono(
-                      fontSize: 10,
-                      color: widget.filmStock.badgeColor,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _statusChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(RetroDimens.radiusXl),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.spaceMono(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.7,
+        ),
       ),
     );
   }

@@ -86,6 +86,11 @@ class _LabScreenState extends State<LabScreen>
     return _videos.where((v) => v.filmStockId == _filterStockId).toList();
   }
 
+  String get _activeFilterLabel {
+    if (_filterStockId == null) return 'ALL STOCKS';
+    return FilmStocks.getById(_filterStockId!).name.toUpperCase();
+  }
+
   Future<void> _exportAsFilmStrip() async {
     final files =
         _filteredPhotos
@@ -185,37 +190,66 @@ class _LabScreenState extends State<LabScreen>
                 ),
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(96),
-          child: Column(
-            children: [
-              TabBar(
-                controller: _tabController,
-                onTap: (_) => setState(() {}),
-                tabs: const [
-                  Tab(text: 'FOTOS'),
-                  Tab(text: 'VIDEOS'),
-                ],
-              ),
-              _buildFilterBar(),
-            ],
-          ),
-        ),
       ),
       body: Stack(
         children: [
           const Positioned.fill(child: GrainOverlay(opacity: 0.02)),
-          TabBarView(
-            controller: _tabController,
+          Column(
             children: [
-              _filteredPhotos.isEmpty
-                  ? _buildEmptyState('AUN NO HAY FOTOS')
-                  : _isFilmStripView
-                  ? _buildFilmStripView()
-                  : _buildPhotoGrid(),
-              _filteredVideos.isEmpty
-                  ? _buildEmptyState('AUN NO HAY VIDEOS')
-                  : _buildVideoGrid(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _buildLabHero(),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: RetroColors.surface.withValues(alpha: 0.96),
+                      borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06),
+                      ),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      onTap: (_) => setState(() {}),
+                      indicator: BoxDecoration(
+                        color: RetroColors.accent.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(
+                          RetroDimens.radiusMd,
+                        ),
+                      ),
+                      dividerColor: Colors.transparent,
+                      labelColor: RetroColors.accent,
+                      unselectedLabelColor: RetroColors.textSecondary,
+                      labelStyle: GoogleFonts.spaceMono(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.1,
+                      ),
+                      tabs: const [Tab(text: 'FOTOS'), Tab(text: 'VIDEOS')],
+                    ),
+                  ),
+                ),
+              ),
+              _buildFilterBar(),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _filteredPhotos.isEmpty
+                        ? _buildEmptyState('AUN NO HAY FOTOS')
+                        : _isFilmStripView
+                        ? _buildFilmStripView()
+                        : _buildPhotoGrid(),
+                    _filteredVideos.isEmpty
+                        ? _buildEmptyState('AUN NO HAY VIDEOS')
+                        : _buildVideoGrid(),
+                  ],
+                ),
+              ),
             ],
           ),
         ],
@@ -223,18 +257,95 @@ class _LabScreenState extends State<LabScreen>
     );
   }
 
-  Widget _buildFilterBar() {
-    return SizedBox(
-      height: 40,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: RetroDimens.paddingMd),
+  Widget _buildLabHero() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(RetroDimens.paddingMd),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF221B16), RetroColors.surface],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _filterChip(null, 'ALL'),
-          ...FilmStocks.all.map(
-            (stock) => _filterChip(stock.id, stock.shortName, stock.badgeColor),
+          Text(
+            'Developed Archive',
+            style: GoogleFonts.spaceMono(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: RetroColors.textPrimary,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'A tighter view of the images and clips that made it out of the roll.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              height: 1.5,
+              color: RetroColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _summaryChip('${_photos.length} PHOTOS', RetroColors.accent),
+              _summaryChip('${_videos.length} VIDEOS', RetroColors.dateYellow),
+              _summaryChip(_activeFilterLabel, RetroColors.textSecondary),
+              if (_tabController.index == 0)
+                _summaryChip(
+                  _isFilmStripView ? 'FILM STRIP' : 'GRID VIEW',
+                  RetroColors.accentLight,
+                ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _summaryChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.spaceMono(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.9,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: SizedBox(
+        height: 42,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            _filterChip(null, 'ALL'),
+            ...FilmStocks.all.map(
+              (stock) =>
+                  _filterChip(stock.id, stock.shortName, stock.badgeColor),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -246,18 +357,18 @@ class _LabScreenState extends State<LabScreen>
       child: GestureDetector(
         onTap: () => setState(() => _filterStockId = stockId),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color:
                 isSelected
                     ? (color ?? RetroColors.accent).withValues(alpha: 0.2)
-                    : RetroColors.surface,
-            borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
+                    : RetroColors.surface.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color:
                   isSelected
                       ? (color ?? RetroColors.accent)
-                      : RetroColors.surfaceLight,
+                      : Colors.white.withValues(alpha: 0.08),
             ),
           ),
           child: Text(
@@ -277,39 +388,96 @@ class _LabScreenState extends State<LabScreen>
   }
 
   Widget _buildPhotoGrid() {
-    return GridView.builder(
-      padding: const EdgeInsets.all(RetroDimens.paddingSm),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 4,
-        crossAxisSpacing: 4,
-      ),
-      itemCount: _filteredPhotos.length,
-      itemBuilder: (context, index) {
-        final photo = _filteredPhotos[index];
-        final stock = FilmStocks.getById(photo.filmStockId);
-        final file = File(photo.processedPath);
-        return GestureDetector(
-          onTap: () => _openPhotoDetail(photo),
-          onLongPress: () => _deletePhoto(photo),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child:
-                    file.existsSync()
-                        ? Image.file(
-                          file,
-                          fit: BoxFit.cover,
-                          cacheWidth: 300,
-                          cacheHeight: 300,
-                        )
-                        : Container(color: RetroColors.surface),
-              ),
-              _stockBadge(stock.shortName, stock.badgeColor),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount =
+            constraints.maxWidth >= 900
+                ? 4
+                : constraints.maxWidth >= 600
+                ? 3
+                : 2;
+        return GridView.builder(
+          padding: const EdgeInsets.all(RetroDimens.paddingMd),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 0.82,
           ),
+          itemCount: _filteredPhotos.length,
+          itemBuilder: (context, index) {
+            final photo = _filteredPhotos[index];
+            final stock = FilmStocks.getById(photo.filmStockId);
+            final file = File(photo.processedPath);
+            return GestureDetector(
+              onTap: () => _openPhotoDetail(photo),
+              onLongPress: () => _deletePhoto(photo),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: RetroColors.surface,
+                  borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.06),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(RetroDimens.radiusMd),
+                            ),
+                            child:
+                                file.existsSync()
+                                    ? Image.file(
+                                      file,
+                                      fit: BoxFit.cover,
+                                      cacheWidth: 500,
+                                      cacheHeight: 500,
+                                    )
+                                    : Container(
+                                      color: RetroColors.surfaceLight,
+                                    ),
+                          ),
+                          _stockBadge(stock.shortName, stock.badgeColor),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            stock.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.spaceMono(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: stock.badgeColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatCapturedAt(photo.capturedAt),
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: RetroColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -317,12 +485,12 @@ class _LabScreenState extends State<LabScreen>
 
   Widget _buildVideoGrid() {
     return GridView.builder(
-      padding: const EdgeInsets.all(RetroDimens.paddingSm),
+      padding: const EdgeInsets.all(RetroDimens.paddingMd),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 0.72,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 0.74,
       ),
       itemCount: _filteredVideos.length,
       itemBuilder: (context, index) {
@@ -335,8 +503,8 @@ class _LabScreenState extends State<LabScreen>
           child: Container(
             decoration: BoxDecoration(
               color: RetroColors.surface,
-              borderRadius: BorderRadius.circular(RetroDimens.radiusSm),
-              border: Border.all(color: RetroColors.surfaceLight),
+              borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -347,7 +515,7 @@ class _LabScreenState extends State<LabScreen>
                     children: [
                       ClipRRect(
                         borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(RetroDimens.radiusSm),
+                          top: Radius.circular(RetroDimens.radiusMd),
                         ),
                         child:
                             thumb.existsSync()
@@ -379,9 +547,9 @@ class _LabScreenState extends State<LabScreen>
                         ),
                       ),
                       Text(
-                        _formatDuration(video.durationMs),
+                        '${_formatDuration(video.durationMs)} · ${_formatCapturedAt(video.capturedAt)}',
                         style: GoogleFonts.spaceMono(
-                          fontSize: 10,
+                          fontSize: 9,
                           color: RetroColors.textSecondary,
                         ),
                       ),
@@ -405,7 +573,7 @@ class _LabScreenState extends State<LabScreen>
           Expanded(
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               itemCount: _filteredPhotos.length,
               itemBuilder: (context, index) {
                 final photo = _filteredPhotos[index];
@@ -413,12 +581,13 @@ class _LabScreenState extends State<LabScreen>
                 return GestureDetector(
                   onTap: () => _openPhotoDetail(photo),
                   child: Container(
-                    width: 200,
+                    width: 220,
                     margin: const EdgeInsets.symmetric(
-                      horizontal: 4,
+                      horizontal: 6,
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
                       border: Border.all(
                         color: const Color(0xFF3D3530),
                         width: 2,
@@ -426,7 +595,16 @@ class _LabScreenState extends State<LabScreen>
                     ),
                     child:
                         file.existsSync()
-                            ? Image.file(file, fit: BoxFit.cover, cacheHeight: 400)
+                            ? ClipRRect(
+                              borderRadius: BorderRadius.circular(
+                                RetroDimens.radiusSm,
+                              ),
+                              child: Image.file(
+                                file,
+                                fit: BoxFit.cover,
+                                cacheHeight: 420,
+                              ),
+                            )
                             : Container(color: RetroColors.surface),
                   ),
                 );
@@ -461,24 +639,44 @@ class _LabScreenState extends State<LabScreen>
 
   Widget _buildEmptyState(String title) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.camera_roll_outlined,
-            size: 80,
-            color: RetroColors.textMuted.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            title,
-            style: GoogleFonts.spaceMono(
-              fontSize: 16,
-              color: RetroColors.textMuted,
-              letterSpacing: 1,
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: RetroColors.surface.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.camera_roll_outlined,
+              size: 72,
+              color: RetroColors.textMuted.withValues(alpha: 0.42),
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            Text(
+              title,
+              style: GoogleFonts.spaceMono(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: RetroColors.textSecondary,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Shoot something worth keeping and it will show up here.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: RetroColors.textMuted,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -488,15 +686,16 @@ class _LabScreenState extends State<LabScreen>
       top: 4,
       left: 4,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(3),
+          color: Colors.black.withValues(alpha: 0.62),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.28)),
         ),
         child: Text(
           label,
           style: GoogleFonts.spaceMono(
-            fontSize: 7,
+            fontSize: 8,
             fontWeight: FontWeight.w700,
             color: color,
           ),
@@ -505,42 +704,109 @@ class _LabScreenState extends State<LabScreen>
     );
   }
 
+  String _formatCapturedAt(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$month/$day/${date.year}';
+  }
+
   Future<void> _openPhotoDetail(RetroPhoto photo) async {
     final file = File(photo.processedPath);
     if (!file.existsSync()) return;
+    final stock = FilmStocks.getById(photo.filmStockId);
     await showDialog<void>(
       context: context,
       builder: (ctx) {
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
-                child: Image.file(file, fit: BoxFit.contain),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+          child: Container(
+            decoration: BoxDecoration(
+              color: RetroColors.surface.withValues(alpha: 0.98),
+              borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _detailAction(Icons.share, 'Compartir', () {
-                    Share.shareXFiles([XFile(photo.processedPath)]);
-                    Navigator.pop(ctx);
-                  }),
-                  const SizedBox(width: 24),
-                  _detailAction(Icons.delete_outline, 'Borrar', () async {
-                    Navigator.pop(ctx);
-                    await _deletePhoto(photo);
-                  }),
-                  const SizedBox(width: 24),
-                  _detailAction(Icons.close, 'Cerrar', () {
-                    Navigator.pop(ctx);
-                  }),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+                    child: Image.file(file, fit: BoxFit.contain),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              stock.name,
+                              style: GoogleFonts.spaceMono(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: stock.badgeColor,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatCapturedAt(photo.capturedAt),
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: RetroColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _metadataPill(stock.processLabel),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _detailAction(
+                          Icons.share,
+                          'Compartir',
+                          RetroColors.accent,
+                          () {
+                            Share.shareXFiles([XFile(photo.processedPath)]);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _detailAction(
+                          Icons.delete_outline,
+                          'Borrar',
+                          RetroColors.error,
+                          () async {
+                            Navigator.pop(ctx);
+                            await _deletePhoto(photo);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _detailAction(
+                          Icons.close,
+                          'Cerrar',
+                          RetroColors.textSecondary,
+                          () {
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            ],
+            ),
           ),
         );
       },
@@ -550,41 +816,69 @@ class _LabScreenState extends State<LabScreen>
   Future<void> _openVideoDetail(RetroVideo video) async {
     await showDialog<void>(
       context: context,
-      builder: (_) => _VideoDialog(
-        video: video,
-        onDelete: () async {
-          Navigator.of(context).pop();
-          await _deleteVideo(video);
-        },
+      builder:
+          (_) => _VideoDialog(
+            video: video,
+            onDelete: () async {
+              Navigator.of(context).pop();
+              await _deleteVideo(video);
+            },
+          ),
+    );
+  }
+
+  Widget _metadataPill(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: RetroColors.surfaceLight,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.spaceMono(
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: RetroColors.textSecondary,
+          letterSpacing: 0.8,
+        ),
       ),
     );
   }
 
-  Widget _detailAction(IconData icon, String label, VoidCallback onTap) {
+  Widget _detailAction(
+    IconData icon,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              color: RetroColors.surface,
-              shape: BoxShape.circle,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.spaceMono(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: color,
+                letterSpacing: 0.9,
+              ),
             ),
-            child: Icon(icon, color: RetroColors.textPrimary, size: 20),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: GoogleFonts.spaceMono(
-              fontSize: 9,
-              color: RetroColors.textSecondary,
-              letterSpacing: 1,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -627,104 +921,217 @@ class _VideoDialogState extends State<_VideoDialog> {
     super.dispose();
   }
 
+  String _formatDuration(int durationMs) {
+    final totalSeconds = (durationMs / 1000).round();
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  String _formatCapturedAt(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$month/$day/${date.year}';
+  }
+
+  Widget _metadataPill(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: RetroColors.surfaceLight,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.spaceMono(
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: RetroColors.textSecondary,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final stock = FilmStocks.getById(widget.video.filmStockId);
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(16),
       child: FutureBuilder<void>(
         future: _initFuture,
         builder: (context, snapshot) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
-                child:
-                    _controller.value.isInitialized
-                        ? AspectRatio(
-                          aspectRatio: _controller.value.aspectRatio,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              VideoPlayer(_controller),
-                              IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    if (_controller.value.isPlaying) {
-                                      _controller.pause();
-                                    } else {
-                                      _controller.play();
-                                    }
-                                  });
-                                },
-                                icon: Icon(
-                                  _controller.value.isPlaying
-                                      ? Icons.pause_circle_filled
-                                      : Icons.play_circle_fill,
-                                  color: Colors.white70,
-                                  size: 64,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                        : Container(
-                          height: 320,
-                          color: RetroColors.surface,
-                          child: const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                        ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+          return Container(
+            decoration: BoxDecoration(
+              color: RetroColors.surface.withValues(alpha: 0.98),
+              borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _action(Icons.share, 'Compartir', () {
-                    Share.shareXFiles([XFile(widget.video.processedPath)]);
-                    Navigator.pop(context);
-                  }),
-                  const SizedBox(width: 24),
-                  _action(Icons.delete_outline, 'Borrar', widget.onDelete),
-                  const SizedBox(width: 24),
-                  _action(Icons.close, 'Cerrar', () {
-                    Navigator.pop(context);
-                  }),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+                    child:
+                        _controller.value.isInitialized
+                            ? AspectRatio(
+                              aspectRatio: _controller.value.aspectRatio,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  VideoPlayer(_controller),
+                                  Container(
+                                    width: 72,
+                                    height: 72,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.42,
+                                      ),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.14,
+                                        ),
+                                      ),
+                                    ),
+                                    child: IconButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          if (_controller.value.isPlaying) {
+                                            _controller.pause();
+                                          } else {
+                                            _controller.play();
+                                          }
+                                        });
+                                      },
+                                      icon: Icon(
+                                        _controller.value.isPlaying
+                                            ? Icons.pause_circle_filled
+                                            : Icons.play_circle_fill,
+                                        color: Colors.white70,
+                                        size: 40,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                            : Container(
+                              height: 320,
+                              color: RetroColors.surface,
+                              child: const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              stock.name,
+                              style: GoogleFonts.spaceMono(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: stock.badgeColor,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${_formatDuration(widget.video.durationMs)} · ${_formatCapturedAt(widget.video.capturedAt)}',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: RetroColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _metadataPill(stock.processLabel),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _action(
+                          Icons.share,
+                          'Compartir',
+                          RetroColors.accent,
+                          () {
+                            Share.shareXFiles([
+                              XFile(widget.video.processedPath),
+                            ]);
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _action(
+                          Icons.delete_outline,
+                          'Borrar',
+                          RetroColors.error,
+                          widget.onDelete,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _action(
+                          Icons.close,
+                          'Cerrar',
+                          RetroColors.textSecondary,
+                          () {
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            ],
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _action(IconData icon, String label, VoidCallback onTap) {
+  Widget _action(IconData icon, String label, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              color: RetroColors.surface,
-              shape: BoxShape.circle,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.spaceMono(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: color,
+                letterSpacing: 0.9,
+              ),
             ),
-            child: Icon(icon, color: RetroColors.textPrimary, size: 20),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: GoogleFonts.spaceMono(
-              fontSize: 9,
-              color: RetroColors.textSecondary,
-              letterSpacing: 1,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

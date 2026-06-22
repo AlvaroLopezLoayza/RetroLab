@@ -16,6 +16,8 @@ class FilmPreview extends StatefulWidget {
   final double vignette;
   final double scratchLevel;
   final int lightLeakIndex;
+  final bool analogRandomness;
+  final int artifactSeed;
 
   const FilmPreview({
     super.key,
@@ -28,6 +30,8 @@ class FilmPreview extends StatefulWidget {
     required this.vignette,
     required this.scratchLevel,
     required this.lightLeakIndex,
+    required this.analogRandomness,
+    required this.artifactSeed,
   });
 
   @override
@@ -103,7 +107,9 @@ class _FilmPreviewState extends State<FilmPreview> {
           _leak = image;
           _currentLeakAsset = asset;
         });
-        if (oldLeak != null && oldAsset != null && !_cachedAssets.contains(oldAsset)) {
+        if (oldLeak != null &&
+            oldAsset != null &&
+            !_cachedAssets.contains(oldAsset)) {
           oldLeak.dispose();
         }
       }
@@ -147,6 +153,12 @@ class _FilmPreviewState extends State<FilmPreview> {
     final shader = _shader!;
     final highlight = stock.highlightTint;
     final shadow = stock.shadowTint;
+    final glare = stock.glareTint;
+    final artifacts = stock.resolveArtifacts(
+      seed: widget.artifactSeed,
+      analogRandomness: widget.analogRandomness,
+    );
+    final matrix = stock.colorMatrix;
 
     final values = <double>[
       stock.temperature,
@@ -172,6 +184,23 @@ class _FilmPreviewState extends State<FilmPreview> {
       widget.leakStrength,
       widget.dustStrength,
       stock.halation,
+      matrix[0],
+      matrix[1],
+      matrix[2],
+      matrix[3],
+      matrix[4],
+      matrix[5],
+      matrix[6],
+      matrix[7],
+      matrix[8],
+      glare.r / 255.0,
+      glare.g / 255.0,
+      glare.b / 255.0,
+      artifacts.borderGlare,
+      artifacts.glareWidth,
+      artifacts.glareAngle,
+      artifacts.chromaticAberrationX,
+      artifacts.chromaticAberrationY,
     ];
     for (var i = 0; i < values.length; i++) {
       shader.setFloat(i + 2, values[i]);
@@ -198,6 +227,8 @@ class _FilmPreviewState extends State<FilmPreview> {
           painter: _FallbackTonePainter(
             stock: widget.stock,
             vignette: widget.vignette,
+            analogRandomness: widget.analogRandomness,
+            artifactSeed: widget.artifactSeed,
           ),
         ),
       ),
@@ -296,25 +327,33 @@ class _TexturePainter extends CustomPainter {
 class _FallbackTonePainter extends CustomPainter {
   final FilmStock stock;
   final double vignette;
+  final bool analogRandomness;
+  final int artifactSeed;
 
-  const _FallbackTonePainter({required this.stock, required this.vignette});
+  const _FallbackTonePainter({
+    required this.stock,
+    required this.vignette,
+    required this.analogRandomness,
+    required this.artifactSeed,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
+    final artifacts = stock.resolveArtifacts(
+      seed: artifactSeed,
+      analogRandomness: analogRandomness,
+    );
 
     if (stock.tintStrength > 0) {
       canvas.drawRect(
         rect,
         Paint()
-          ..shader = ui.Gradient.linear(
-            Offset.zero,
-            Offset(0, size.height * 0.6),
-            [
-              stock.highlightTint.withValues(alpha: stock.tintStrength * 0.10),
-              Colors.transparent,
-            ],
-          )
+          ..shader = ui
+              .Gradient.linear(Offset.zero, Offset(0, size.height * 0.6), [
+            stock.highlightTint.withValues(alpha: stock.tintStrength * 0.10),
+            Colors.transparent,
+          ])
           ..blendMode = BlendMode.screen,
       );
       canvas.drawRect(
@@ -365,9 +404,39 @@ class _FallbackTonePainter extends CustomPainter {
           ..blendMode = BlendMode.multiply,
       );
     }
+
+    if (artifacts.borderGlare > 0) {
+      final center = rect.center;
+      final direction = Offset(
+        artifacts.glareAngle,
+        -artifacts.glareAngle * 0.7,
+      );
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            center +
+                Offset(
+                  direction.dx * size.width * 0.18,
+                  direction.dy * size.height * 0.18,
+                ),
+            size.longestSide * (0.55 + artifacts.glareWidth * 0.35),
+            [
+              Colors.transparent,
+              Colors.transparent,
+              stock.glareTint.withValues(alpha: artifacts.borderGlare * 0.34),
+            ],
+            const [0.0, 0.72, 1.0],
+          )
+          ..blendMode = BlendMode.screen,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(_FallbackTonePainter oldDelegate) =>
-      oldDelegate.stock != stock || oldDelegate.vignette != vignette;
+      oldDelegate.stock != stock ||
+      oldDelegate.vignette != vignette ||
+      oldDelegate.analogRandomness != analogRandomness ||
+      oldDelegate.artifactSeed != artifactSeed;
 }

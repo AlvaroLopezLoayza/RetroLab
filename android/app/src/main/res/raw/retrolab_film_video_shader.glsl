@@ -24,6 +24,14 @@ uniform float uScratch;
 uniform float uLeak;
 uniform float uDust;
 uniform float uHalation;
+uniform vec3 uColorMatrixRow0;
+uniform vec3 uColorMatrixRow1;
+uniform vec3 uColorMatrixRow2;
+uniform vec3 uGlareTint;
+uniform float uBorderGlare;
+uniform float uGlareWidth;
+uniform float uGlareAngle;
+uniform vec2 uCaOffset;
 varying vec2 vTexSamplingCoord;
 
 float hashNoise(vec2 p) {
@@ -81,9 +89,38 @@ vec3 addHalation(vec2 uv, vec3 color) {
   return color + halo;
 }
 
+vec3 applyColorMatrix(vec3 color) {
+  return clamp(
+    vec3(
+      dot(color, uColorMatrixRow0),
+      dot(color, uColorMatrixRow1),
+      dot(color, uColorMatrixRow2)
+    ),
+    0.0,
+    1.0
+  );
+}
+
+vec3 addBorderGlare(vec2 centered, vec3 color) {
+  if (uBorderGlare <= 0.0) {
+    return color;
+  }
+  float radial = max(abs(centered.x), abs(centered.y)) / 0.5;
+  float edge = smoothTone(0.58 - uGlareWidth * 0.22, 1.0, radial);
+  float bias = clamp(dot(centered, vec2(cos(uGlareAngle), sin(uGlareAngle))) + 0.5, 0.0, 1.0);
+  float glare = edge * uBorderGlare * (0.45 + bias * 0.55);
+  return 1.0 - (1.0 - color) * (1.0 - uGlareTint * glare);
+}
+
 void main() {
   vec2 uv = vTexSamplingCoord;
+  vec2 centered = uv - vec2(0.5);
+  float edgeMix = smoothTone(0.24, 1.0, length(centered) / 0.70710678);
+  vec2 caShift = uCaOffset * edgeMix;
+
   vec4 source = texture2D(uTexSampler, uv);
+  source.r = texture2D(uTexSampler, uv + caShift).r;
+  source.b = texture2D(uTexSampler, uv - caShift).b;
   vec3 color = addHalation(uv, source.rgb);
 
   float luminance = dot(color, vec3(0.299, 0.587, 0.114));
@@ -92,6 +129,7 @@ void main() {
   color = clamp(color, 0.0, 1.0);
 
   color = pow(color, vec3(uRedGamma, uGreenGamma, uBlueGamma));
+  color = applyColorMatrix(color);
   luminance = dot(color, vec3(0.299, 0.587, 0.114));
   color = vec3(luminance) + (color - vec3(luminance)) * uSaturation;
 
@@ -129,10 +167,10 @@ void main() {
     color += mix(mono, chroma, clamp(uGrainColored, 0.0, 1.0)) * amount;
   }
 
-  vec2 centered = uv - vec2(0.5);
   float distanceFromCenter = length(centered) / 0.70710678;
   float vignetteAmount = clamp(distanceFromCenter - 0.4, 0.0, 1.0) * uVignette;
   color *= 1.0 - vignetteAmount;
+  color = addBorderGlare(centered, color);
 
   color = screenBlend(color, texture2D(uScratchTexture, uv), uScratch);
   color = screenBlend(color, texture2D(uLeakTexture, uv), uLeak);

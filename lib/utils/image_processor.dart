@@ -74,7 +74,11 @@ class ImageProcessor {
       throw ImageDecodeException('Failed to decode double exposure sources');
     }
 
-    final base = img.copyResize(first, width: first.width, height: first.height);
+    final base = img.copyResize(
+      first,
+      width: first.width,
+      height: first.height,
+    );
     final overlay = img.copyResize(
       second,
       width: first.width,
@@ -108,6 +112,7 @@ class ImageProcessor {
     DateStampStyle dateStampStyle = DateStampStyle.classic90s,
     DateStampPosition dateStampPosition = DateStampPosition.bottomRight,
     bool analogRandomness = true,
+    int? artifactSeed,
     DateTime? captureDate,
     bool saveLocationData = false,
   }) async {
@@ -158,6 +163,7 @@ class ImageProcessor {
           dateStampStyle: dateStampStyle,
           dateStampPosition: dateStampPosition,
           analogRandomness: analogRandomness,
+          artifactSeed: artifactSeed,
           captureDate: captureDate ?? DateTime.now(),
           saveLocationData: saveLocationData,
           scratchBytes: scratchBytes,
@@ -203,6 +209,7 @@ class ImageProcessor {
     required DateStampStyle dateStampStyle,
     required DateStampPosition dateStampPosition,
     required bool analogRandomness,
+    required int? artifactSeed,
     required DateTime captureDate,
     required bool saveLocationData,
     Uint8List? scratchBytes,
@@ -228,12 +235,25 @@ class ImageProcessor {
             ? 0.0
             : (saturationOverride ?? filmStock.saturation);
     final effectiveVignette = vignette ?? filmStock.baseVignette;
+    final artifacts = filmStock.resolveArtifacts(
+      seed: artifactSeed ?? filmStock.id.hashCode,
+      analogRandomness: analogRandomness,
+    );
 
     if (filmStock.halation > 0) {
       _applyHalation(image, filmStock.halation);
     }
 
     _applyFilmStockGrading(image, filmStock, effectiveSaturation);
+
+    if (artifacts.chromaticAberrationX != 0 ||
+        artifacts.chromaticAberrationY != 0) {
+      _applyChromaticAberration(
+        image,
+        artifacts.chromaticAberrationX,
+        artifacts.chromaticAberrationY,
+      );
+    }
 
     if (effectiveGrain > 0) {
       _applyProceduralGrain(
@@ -246,6 +266,16 @@ class ImageProcessor {
 
     if (effectiveVignette > 0) {
       _applyVignette(image, effectiveVignette);
+    }
+
+    if (artifacts.borderGlare > 0) {
+      _applyBorderGlare(
+        image,
+        strength: artifacts.borderGlare,
+        width: artifacts.glareWidth,
+        angle: artifacts.glareAngle,
+        tint: filmStock.glareTint,
+      );
     }
 
     if (scratchLevel > 0 && scratchBytes != null) {
@@ -314,6 +344,7 @@ class ImageProcessor {
     final blueLUT = _buildGammaLUT(stock.blueGamma);
     final highlight = stock.highlightTint;
     final shadow = stock.shadowTint;
+    final matrix = stock.colorMatrix;
 
     for (int y = 0; y < image.height; y++) {
       for (int x = 0; x < image.width; x++) {
@@ -336,6 +367,13 @@ class ImageProcessor {
         r = redLUT[(r * 255.0).round().clamp(0, 255)] / 255.0;
         g = greenLUT[(g * 255.0).round().clamp(0, 255)] / 255.0;
         b = blueLUT[(b * 255.0).round().clamp(0, 255)] / 255.0;
+
+        if (matrix != FilmStock.identityColorMatrix) {
+          final transformed = _applyColorMatrix(r, g, b, matrix);
+          r = transformed.$1;
+          g = transformed.$2;
+          b = transformed.$3;
+        }
 
         final luminance = 0.299 * r + 0.587 * g + 0.114 * b;
         r = luminance + (r - luminance) * saturation;
@@ -471,6 +509,18 @@ class ImageProcessor {
     return value - value.floorToDouble();
   }
 
+  static (double, double, double) _applyColorMatrix(
+    double r,
+    double g,
+    double b,
+    List<double> matrix,
+  ) {
+    final nr = (r * matrix[0] + g * matrix[1] + b * matrix[2]).clamp(0.0, 1.0);
+    final ng = (r * matrix[3] + g * matrix[4] + b * matrix[5]).clamp(0.0, 1.0);
+    final nb = (r * matrix[6] + g * matrix[7] + b * matrix[8]).clamp(0.0, 1.0);
+    return (nr, ng, nb);
+  }
+
   static void _applyVignette(img.Image image, double intensity) {
     final cx = image.width / 2.0;
     final cy = image.height / 2.0;
@@ -487,6 +537,86 @@ class ImageProcessor {
         pixel.r = (pixel.r * factor).round().clamp(0, 255);
         pixel.g = (pixel.g * factor).round().clamp(0, 255);
         pixel.b = (pixel.b * factor).round().clamp(0, 255);
+      }
+    }
+  }
+
+  static void _applyBorderGlare(
+    img.Image image, {
+    required double strength,
+    required double width,
+    required double angle,
+    required Color tint,
+  }) {
+    final cx = image.width / 2.0;
+    final cy = image.height / 2.0;
+    final cosAngle = cos(angle);
+    final sinAngle = sin(angle);
+    final tintR = tint.r / 255.0;
+    final tintG = tint.g / 255.0;
+    final tintB = tint.b / 255.0;
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final nx = (x - cx) / cx;
+        final ny = (y - cy) / cy;
+        final radial = max(nx.abs(), ny.abs());
+        final edge = _smoothstep(0.58 - width * 0.22, 1.0, radial);
+        if (edge <= 0) continue;
+        final bias = (((nx * cosAngle) + (ny * sinAngle)) * 0.5 + 0.5).clamp(
+          0.0,
+          1.0,
+        );
+        final glare = edge * strength * (0.45 + bias * 0.55);
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r / 255.0;
+        final g = pixel.g / 255.0;
+        final b = pixel.b / 255.0;
+        pixel.r = ((1.0 - (1.0 - r) * (1.0 - tintR * glare)) * 255.0)
+            .round()
+            .clamp(0, 255);
+        pixel.g = ((1.0 - (1.0 - g) * (1.0 - tintG * glare)) * 255.0)
+            .round()
+            .clamp(0, 255);
+        pixel.b = ((1.0 - (1.0 - b) * (1.0 - tintB * glare)) * 255.0)
+            .round()
+            .clamp(0, 255);
+      }
+    }
+  }
+
+  static void _applyChromaticAberration(
+    img.Image image,
+    double offsetX,
+    double offsetY,
+  ) {
+    final source = img.copyResize(
+      image,
+      width: image.width,
+      height: image.height,
+    );
+    final cx = image.width / 2.0;
+    final cy = image.height / 2.0;
+    final shiftX = offsetX * image.width;
+    final shiftY = offsetY * image.height;
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final dx = (x - cx) / cx;
+        final dy = (y - cy) / cy;
+        final edge = _smoothstep(
+          0.24,
+          1.0,
+          sqrt(dx * dx + dy * dy) / 1.41421356237,
+        );
+        if (edge <= 0) continue;
+        final redX = (x + shiftX * edge).round().clamp(0, image.width - 1);
+        final redY = (y + shiftY * edge).round().clamp(0, image.height - 1);
+        final blueX = (x - shiftX * edge).round().clamp(0, image.width - 1);
+        final blueY = (y - shiftY * edge).round().clamp(0, image.height - 1);
+        final pixel = image.getPixel(x, y);
+        pixel.r = source.getPixel(redX, redY).r;
+        pixel.b = source.getPixel(blueX, blueY).b;
       }
     }
   }

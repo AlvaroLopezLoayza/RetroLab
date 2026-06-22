@@ -20,6 +20,14 @@ uniform float u_scratch;
 uniform float u_leak;
 uniform float u_dust;
 uniform float u_halation;
+uniform vec3 u_color_matrix_row_0;
+uniform vec3 u_color_matrix_row_1;
+uniform vec3 u_color_matrix_row_2;
+uniform vec3 u_glare_tint;
+uniform float u_border_glare;
+uniform float u_glare_width;
+uniform float u_glare_angle;
+uniform vec2 u_ca_offset;
 
 uniform sampler2D u_input;
 uniform sampler2D u_scratch_texture;
@@ -84,13 +92,42 @@ vec3 add_halation(vec2 uv, vec3 color) {
   return color + halo;
 }
 
+vec3 apply_color_matrix(vec3 color) {
+  return clamp(
+    vec3(
+      dot(color, u_color_matrix_row_0),
+      dot(color, u_color_matrix_row_1),
+      dot(color, u_color_matrix_row_2)
+    ),
+    0.0,
+    1.0
+  );
+}
+
+vec3 add_border_glare(vec2 centered, vec3 color) {
+  if (u_border_glare <= 0.0) {
+    return color;
+  }
+  float radial = max(abs(centered.x), abs(centered.y)) / 0.5;
+  float edge = smooth_tone(0.58 - u_glare_width * 0.22, 1.0, radial);
+  float bias = clamp(dot(centered, vec2(cos(u_glare_angle), sin(u_glare_angle))) + 0.5, 0.0, 1.0);
+  float glare = edge * u_border_glare * (0.45 + bias * 0.55);
+  return 1.0 - (1.0 - color) * (1.0 - u_glare_tint * glare);
+}
+
 void main() {
   vec2 uv = FlutterFragCoord().xy / u_size;
 #ifdef IMPELLER_TARGET_OPENGLES
   uv.y = 1.0 - uv.y;
 #endif
 
+  vec2 centered = uv - vec2(0.5);
+  float edge_mix = smooth_tone(0.24, 1.0, length(centered) / 0.70710678);
+  vec2 ca_shift = u_ca_offset * edge_mix;
+
   vec4 source = texture(u_input, uv);
+  source.r = texture(u_input, uv + ca_shift).r;
+  source.b = texture(u_input, uv - ca_shift).b;
   vec3 color = add_halation(uv, source.rgb);
 
   float luminance = dot(color, vec3(0.299, 0.587, 0.114));
@@ -99,6 +136,7 @@ void main() {
   color = clamp(color, 0.0, 1.0);
 
   color = pow(color, vec3(u_red_gamma, u_green_gamma, u_blue_gamma));
+  color = apply_color_matrix(color);
 
   luminance = dot(color, vec3(0.299, 0.587, 0.114));
   color = vec3(luminance) + (color - vec3(luminance)) * u_saturation;
@@ -137,10 +175,10 @@ void main() {
     color += mix(mono, chroma, clamp(u_grain_colored, 0.0, 1.0)) * amount;
   }
 
-  vec2 centered = uv - vec2(0.5);
   float distance_from_center = length(centered) / 0.70710678;
   float vignette_amount = clamp(distance_from_center - 0.4, 0.0, 1.0) * u_vignette;
   color *= 1.0 - vignette_amount;
+  color = add_border_glare(centered, color);
 
   color = screen_blend(color, texture(u_scratch_texture, uv), u_scratch);
   color = screen_blend(color, texture(u_leak_texture, uv), u_leak);

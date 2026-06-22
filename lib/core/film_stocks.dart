@@ -1,12 +1,42 @@
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'constants.dart';
 
 enum FilmProcess { c41, e6, blackAndWhite, instant, cinematic }
 
+class ResolvedFilmArtifacts {
+  final double borderGlare;
+  final double glareWidth;
+  final double glareAngle;
+  final double chromaticAberrationX;
+  final double chromaticAberrationY;
+
+  const ResolvedFilmArtifacts({
+    required this.borderGlare,
+    required this.glareWidth,
+    required this.glareAngle,
+    required this.chromaticAberrationX,
+    required this.chromaticAberrationY,
+  });
+}
+
 class FilmStock {
+  static const List<double> identityColorMatrix = <double>[
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+  ];
+
   final String id;
   final String name;
   final String shortName;
@@ -31,6 +61,10 @@ class FilmStock {
   final double redGamma;
   final double greenGamma;
   final double blueGamma;
+  final double borderGlare;
+  final Color glareTint;
+  final double chromaticAberration;
+  final List<double> colorMatrix;
 
   const FilmStock({
     required this.id,
@@ -57,6 +91,10 @@ class FilmStock {
     required this.redGamma,
     required this.greenGamma,
     required this.blueGamma,
+    this.borderGlare = 0.0,
+    this.glareTint = const Color(0xFFFFFFFF),
+    this.chromaticAberration = 0.0,
+    this.colorMatrix = identityColorMatrix,
   });
 
   String get processLabel => switch (filmProcess) {
@@ -66,6 +104,40 @@ class FilmStock {
     FilmProcess.instant => 'Instant',
     FilmProcess.cinematic => 'ECN-2',
   };
+
+  ResolvedFilmArtifacts resolveArtifacts({
+    required int seed,
+    required bool analogRandomness,
+  }) {
+    if (!analogRandomness) {
+      return const ResolvedFilmArtifacts(
+        borderGlare: 0.0,
+        glareWidth: 0.18,
+        glareAngle: 0.0,
+        chromaticAberrationX: 0.0,
+        chromaticAberrationY: 0.0,
+      );
+    }
+
+    final glareStrength = borderGlare * (0.82 + _seededUnit(seed, 17) * 0.36);
+    final glareWidth = 0.12 + _seededUnit(seed, 29) * 0.16;
+    final glareAngle = -0.38 + _seededUnit(seed, 43) * 0.76;
+    final aberration =
+        chromaticAberration * (0.80 + _seededUnit(seed, 71) * 0.50);
+    final aberrationAngle = _seededUnit(seed, 97) * math.pi * 2.0;
+    return ResolvedFilmArtifacts(
+      borderGlare: glareStrength,
+      glareWidth: glareWidth,
+      glareAngle: glareAngle,
+      chromaticAberrationX: math.cos(aberrationAngle) * aberration,
+      chromaticAberrationY: math.sin(aberrationAngle) * aberration,
+    );
+  }
+
+  static double _seededUnit(int seed, int salt) {
+    final value = math.sin((seed * 0.013) + salt * 12.9898) * 43758.5453;
+    return value - value.floorToDouble();
+  }
 }
 
 class FilmStocks {
@@ -90,6 +162,7 @@ class FilmStocks {
     expired1998,
     disposableFlash800,
     pocket110,
+    custom400C41,
   ];
 
   static const FilmStock kodakGold200 = FilmStock(
@@ -116,6 +189,9 @@ class FilmStocks {
     redGamma: 0.96,
     greenGamma: 1.00,
     blueGamma: 1.05,
+    borderGlare: 0.16,
+    glareTint: Color(0xFFFFB44D),
+    chromaticAberration: 0.0016,
   );
 
   static const FilmStock kodakUltramax400 = FilmStock(
@@ -142,6 +218,9 @@ class FilmStocks {
     redGamma: 0.97,
     greenGamma: 0.99,
     blueGamma: 1.03,
+    borderGlare: 0.20,
+    glareTint: Color(0xFFFFA13D),
+    chromaticAberration: 0.0022,
   );
 
   static const FilmStock kodakPortra400 = FilmStock(
@@ -168,6 +247,9 @@ class FilmStocks {
     redGamma: 0.97,
     greenGamma: 1.00,
     blueGamma: 1.03,
+    borderGlare: 0.12,
+    glareTint: Color(0xFFFFC3A0),
+    chromaticAberration: 0.0012,
   );
 
   static const FilmStock kodakEktar100 = FilmStock(
@@ -194,6 +276,9 @@ class FilmStocks {
     redGamma: 0.96,
     greenGamma: 0.99,
     blueGamma: 1.02,
+    borderGlare: 0.06,
+    glareTint: Color(0xFFFFC2A2),
+    chromaticAberration: 0.0008,
   );
 
   static const FilmStock fujiSuperia400 = FilmStock(
@@ -220,6 +305,9 @@ class FilmStocks {
     redGamma: 1.03,
     greenGamma: 0.97,
     blueGamma: 1.00,
+    borderGlare: 0.15,
+    glareTint: Color(0xFF9DFFD6),
+    chromaticAberration: 0.0015,
   );
 
   static const FilmStock agfaVista200 = FilmStock(
@@ -246,6 +334,9 @@ class FilmStocks {
     redGamma: 0.97,
     greenGamma: 1.01,
     blueGamma: 0.99,
+    borderGlare: 0.14,
+    glareTint: Color(0xFFFF9E63),
+    chromaticAberration: 0.0016,
   );
 
   static const FilmStock fujiVelvia50 = FilmStock(
@@ -272,6 +363,9 @@ class FilmStocks {
     redGamma: 0.99,
     greenGamma: 0.96,
     blueGamma: 0.98,
+    borderGlare: 0.05,
+    glareTint: Color(0xFFB5FFF0),
+    chromaticAberration: 0.0008,
   );
 
   static const FilmStock fujiProvia100F = FilmStock(
@@ -298,6 +392,9 @@ class FilmStocks {
     redGamma: 1.00,
     greenGamma: 0.98,
     blueGamma: 0.99,
+    borderGlare: 0.05,
+    glareTint: Color(0xFFCFF5FF),
+    chromaticAberration: 0.0007,
   );
 
   static const FilmStock ilfordHP5 = FilmStock(
@@ -324,6 +421,9 @@ class FilmStocks {
     redGamma: 1.00,
     greenGamma: 1.00,
     blueGamma: 1.00,
+    borderGlare: 0.09,
+    glareTint: Color(0xFFF7F7F3),
+    chromaticAberration: 0.0011,
   );
 
   static const FilmStock kodakTriX400 = FilmStock(
@@ -350,6 +450,9 @@ class FilmStocks {
     redGamma: 0.95,
     greenGamma: 1.00,
     blueGamma: 1.04,
+    borderGlare: 0.10,
+    glareTint: Color(0xFFF4F2EB),
+    chromaticAberration: 0.0013,
   );
 
   static const FilmStock ilfordDelta100 = FilmStock(
@@ -376,6 +479,9 @@ class FilmStocks {
     redGamma: 0.99,
     greenGamma: 1.00,
     blueGamma: 1.02,
+    borderGlare: 0.03,
+    glareTint: Color(0xFFF6F6F1),
+    chromaticAberration: 0.0006,
   );
 
   static const FilmStock cineStill800T = FilmStock(
@@ -403,6 +509,9 @@ class FilmStocks {
     redGamma: 0.98,
     greenGamma: 1.00,
     blueGamma: 0.94,
+    borderGlare: 0.22,
+    glareTint: Color(0xFFFF7A59),
+    chromaticAberration: 0.0024,
   );
 
   static const FilmStock cineStill50D = FilmStock(
@@ -430,6 +539,9 @@ class FilmStocks {
     redGamma: 0.98,
     greenGamma: 1.00,
     blueGamma: 1.02,
+    borderGlare: 0.07,
+    glareTint: Color(0xFFFFC487),
+    chromaticAberration: 0.0009,
   );
 
   static const FilmStock polaroid600 = FilmStock(
@@ -456,6 +568,9 @@ class FilmStocks {
     redGamma: 0.99,
     greenGamma: 1.00,
     blueGamma: 0.98,
+    borderGlare: 0.20,
+    glareTint: Color(0xFFFFC4EC),
+    chromaticAberration: 0.0020,
   );
 
   static const FilmStock lomo400 = FilmStock(
@@ -482,6 +597,9 @@ class FilmStocks {
     redGamma: 0.96,
     greenGamma: 1.03,
     blueGamma: 0.97,
+    borderGlare: 0.17,
+    glareTint: Color(0xFFFFE160),
+    chromaticAberration: 0.0018,
   );
 
   static const FilmStock expired1998 = FilmStock(
@@ -508,6 +626,9 @@ class FilmStocks {
     redGamma: 0.95,
     greenGamma: 1.04,
     blueGamma: 1.00,
+    borderGlare: 0.21,
+    glareTint: Color(0xFFFF9FD3),
+    chromaticAberration: 0.0021,
   );
 
   static const FilmStock disposableFlash800 = FilmStock(
@@ -534,6 +655,9 @@ class FilmStocks {
     redGamma: 1.02,
     greenGamma: 0.99,
     blueGamma: 0.97,
+    borderGlare: 0.18,
+    glareTint: Color(0xFFFFE7C2),
+    chromaticAberration: 0.0020,
   );
 
   static const FilmStock pocket110 = FilmStock(
@@ -560,6 +684,50 @@ class FilmStocks {
     redGamma: 0.96,
     greenGamma: 1.03,
     blueGamma: 0.99,
+    borderGlare: 0.23,
+    glareTint: Color(0xFFFFC49A),
+    chromaticAberration: 0.0026,
+  );
+
+  static const FilmStock custom400C41 = FilmStock(
+    id: 'custom_400_c41',
+    name: 'Custom 400 C-41',
+    shortName: 'C400',
+    description:
+        'Photographed-screen negative with warm falloff and edge bleed.',
+    badgeColor: Color(0xFFFF8F5A),
+    icon: Icons.camera_roll,
+    filmProcess: FilmProcess.c41,
+    iso: 400,
+    temperature: 0.06,
+    saturation: 1.18,
+    contrast: 0.12,
+    brightness: 0.025,
+    shadowLift: 0.05,
+    highlightTint: Color(0xFFF2C9AE),
+    shadowTint: Color(0xFF52455B),
+    tintStrength: 0.11,
+    baseGrain: 0.12,
+    coloredGrain: true,
+    grainSize: 1.0,
+    baseVignette: 0.32,
+    redGamma: 0.96,
+    greenGamma: 1.00,
+    blueGamma: 0.95,
+    borderGlare: 0.26,
+    glareTint: Color(0xFFFFB16A),
+    chromaticAberration: 0.0028,
+    colorMatrix: <double>[
+      1.08,
+      0.18,
+      -0.08,
+      0.01,
+      1.02,
+      -0.03,
+      -0.04,
+      0.07,
+      1.08,
+    ],
   );
 
   static FilmStock getById(String id) {

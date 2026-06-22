@@ -149,6 +149,14 @@ private data class RetroFilterSettings(
     val leakStrength: Float,
     val dustStrength: Float,
     val halation: Float,
+    val colorMatrixRow0: FloatArray,
+    val colorMatrixRow1: FloatArray,
+    val colorMatrixRow2: FloatArray,
+    val glareTint: FloatArray,
+    val borderGlare: Float,
+    val glareWidth: Float,
+    val glareAngle: Float,
+    val caOffset: FloatArray,
     val leakAsset: String,
     val dustAsset: String,
     val scratchAsset: String,
@@ -160,6 +168,11 @@ private data class RetroFilterSettings(
                 @Suppress("UNCHECKED_CAST")
                 val list = map[name] as List<Number>
                 return floatArrayOf(list[0].toFloat(), list[1].toFloat(), list[2].toFloat())
+            }
+            fun vec2(name: String): FloatArray {
+                @Suppress("UNCHECKED_CAST")
+                val list = map[name] as List<Number>
+                return floatArrayOf(list[0].toFloat(), list[1].toFloat())
             }
             return RetroFilterSettings(
                 temperature = value("temperature"),
@@ -181,6 +194,14 @@ private data class RetroFilterSettings(
                 leakStrength = value("leakStrength"),
                 dustStrength = value("dustStrength"),
                 halation = value("halation"),
+                colorMatrixRow0 = tint("colorMatrixRow0"),
+                colorMatrixRow1 = tint("colorMatrixRow1"),
+                colorMatrixRow2 = tint("colorMatrixRow2"),
+                glareTint = tint("glareTint"),
+                borderGlare = value("borderGlare"),
+                glareWidth = value("glareWidth"),
+                glareAngle = value("glareAngle"),
+                caOffset = vec2("caOffset"),
                 leakAsset = map["leakAsset"] as String,
                 dustAsset = map["dustAsset"] as String,
                 scratchAsset = map["scratchAsset"] as String,
@@ -274,6 +295,14 @@ private class RetroFilterShaderProgram(
             glProgram.setFloatUniform("uLeak", settings.leakStrength)
             glProgram.setFloatUniform("uDust", settings.dustStrength)
             glProgram.setFloatUniform("uHalation", settings.halation)
+            glProgram.setFloatsUniform("uColorMatrixRow0", settings.colorMatrixRow0)
+            glProgram.setFloatsUniform("uColorMatrixRow1", settings.colorMatrixRow1)
+            glProgram.setFloatsUniform("uColorMatrixRow2", settings.colorMatrixRow2)
+            glProgram.setFloatsUniform("uGlareTint", settings.glareTint)
+            glProgram.setFloatUniform("uBorderGlare", settings.borderGlare)
+            glProgram.setFloatUniform("uGlareWidth", settings.glareWidth)
+            glProgram.setFloatUniform("uGlareAngle", settings.glareAngle)
+            glProgram.setFloatsUniform("uCaOffset", settings.caOffset)
             glProgram.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         } catch (error: GlUtil.GlException) {

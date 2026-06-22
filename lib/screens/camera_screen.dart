@@ -39,6 +39,7 @@ import '../widgets/shutter_button.dart';
 import '../widgets/viewfinder_overlay.dart';
 import 'lab_screen.dart';
 import 'processing_screen.dart';
+import 'settings_screen.dart';
 import 'video_processing_screen.dart';
 
 enum CaptureMode { photo, video }
@@ -172,7 +173,8 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive) {
-      if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      if (_cameraController == null ||
+          !_cameraController!.value.isInitialized) {
         return;
       }
       _clearPendingDoubleExposure();
@@ -356,7 +358,9 @@ class _CameraScreenState extends State<CameraScreen>
     if (status.isGranted) return true;
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Se requiere micrófono para grabar video.')),
+        const SnackBar(
+          content: Text('Se requiere micrófono para grabar video.'),
+        ),
       );
     }
     return false;
@@ -432,7 +436,8 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _setExposureOffset(double offset) async {
     final controller = _cameraController;
     if (controller == null) return;
-    final next = offset.clamp(_minExposureOffset, _maxExposureOffset).toDouble();
+    final next =
+        offset.clamp(_minExposureOffset, _maxExposureOffset).toDouble();
     _pendingExposureOffset = next;
     if (_isApplyingExposure) return;
     _isApplyingExposure = true;
@@ -521,6 +526,194 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() => _overlayMode = next);
   }
 
+  Future<void> _openQuickSettings() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final analogRandomness = HiveService.analogRandomnessEnabled;
+            final saveLocationData = HiveService.saveLocationDataEnabled;
+            final dateStampStyle = DateStampStyle.values.firstWhere(
+              (style) => style.name == HiveService.dateStampStyle,
+              orElse: () => DateStampStyle.classic90s,
+            );
+            final dateStampPosition = DateStampPosition.values.firstWhere(
+              (position) => position.name == HiveService.dateStampPosition,
+              orElse: () => DateStampPosition.bottomRight,
+            );
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: RetroColors.surface,
+                    borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+                    border: Border.all(color: RetroColors.surfaceLight),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(RetroDimens.paddingMd),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'QUICK SETTINGS',
+                          style: GoogleFonts.spaceMono(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: RetroColors.accent,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Fast access to the capture toggles you actually use.',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: RetroColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Analog Randomness',
+                            style: GoogleFonts.spaceMono(
+                              fontSize: 12,
+                              color: RetroColors.textPrimary,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Border glare and chromatic drift variation',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: RetroColors.textMuted,
+                            ),
+                          ),
+                          value: analogRandomness,
+                          activeThumbColor: RetroColors.accent,
+                          onChanged: (value) async {
+                            await HiveService.setAnalogRandomness(value);
+                            if (!mounted) return;
+                            setState(() {});
+                            setSheetState(() {});
+                          },
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Save Location Data',
+                            style: GoogleFonts.spaceMono(
+                              fontSize: 12,
+                              color: RetroColors.textPrimary,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Keep GPS EXIF in exported photos',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: RetroColors.textMuted,
+                            ),
+                          ),
+                          value: saveLocationData,
+                          activeThumbColor: RetroColors.accent,
+                          onChanged: (value) async {
+                            await HiveService.setSaveLocationData(value);
+                            if (!mounted) return;
+                            setState(() {});
+                            setSheetState(() {});
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Date Stamp Defaults',
+                          style: GoogleFonts.spaceMono(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: RetroColors.accent,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<DateStampStyle>(
+                          initialValue: dateStampStyle,
+                          dropdownColor: RetroColors.surface,
+                          decoration: const InputDecoration(labelText: 'Style'),
+                          items:
+                              DateStampStyle.values
+                                  .map(
+                                    (style) => DropdownMenuItem(
+                                      value: style,
+                                      child: Text(style.label),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: (value) async {
+                            if (value == null) return;
+                            await HiveService.setDateStampStyle(value.name);
+                            if (!mounted) return;
+                            setState(() {});
+                            setSheetState(() {});
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<DateStampPosition>(
+                          initialValue: dateStampPosition,
+                          dropdownColor: RetroColors.surface,
+                          decoration: const InputDecoration(
+                            labelText: 'Position',
+                          ),
+                          items:
+                              DateStampPosition.values
+                                  .map(
+                                    (position) => DropdownMenuItem(
+                                      value: position,
+                                      child: Text(position.label),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: (value) async {
+                            if (value == null) return;
+                            await HiveService.setDateStampPosition(value.name);
+                            if (!mounted) return;
+                            setState(() {});
+                            setSheetState(() {});
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              Navigator.of(sheetContext).pop();
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const SettingsScreen(),
+                                ),
+                              );
+                              if (mounted) {
+                                setState(() {});
+                              }
+                            },
+                            icon: const Icon(Icons.tune),
+                            label: const Text('Open Full Settings'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   /// Handle tap-to-focus on the camera preview.
   /// Sets focus point and shows animated focus indicator.
   Future<void> _handleTapToFocus(TapDownDetails details) async {
@@ -542,23 +735,22 @@ class _CameraScreenState extends State<CameraScreen>
     final previewSize = _cameraController!.value.previewSize;
     final sourceWidth = previewSize?.height ?? size.width;
     final sourceHeight = previewSize?.width ?? size.height;
-    final scale = math.max(size.width / sourceWidth, size.height / sourceHeight);
+    final scale = math.max(
+      size.width / sourceWidth,
+      size.height / sourceHeight,
+    );
     final fittedWidth = sourceWidth * scale;
     final fittedHeight = sourceHeight * scale;
     final horizontalInset = (size.width - fittedWidth) / 2;
     final verticalInset = (size.height - fittedHeight) / 2;
 
     // Calculate normalized coordinates
-    final x =
-        ((details.localPosition.dx - horizontalInset) / fittedWidth).clamp(
-          0.0,
-          1.0,
-        );
-    final y =
-        ((details.localPosition.dy - verticalInset) / fittedHeight).clamp(
-          0.0,
-          1.0,
-        );
+    final x = ((details.localPosition.dx - horizontalInset) / fittedWidth)
+        .clamp(0.0, 1.0);
+    final y = ((details.localPosition.dy - verticalInset) / fittedHeight).clamp(
+      0.0,
+      1.0,
+    );
 
     try {
       // Set focus point (x, y are normalized to 0.0-1.0)
@@ -648,9 +840,9 @@ class _CameraScreenState extends State<CameraScreen>
       _recordingTimer?.cancel();
       if (mounted) {
         setState(() => _isRecordingVideo = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al iniciar video: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al iniciar video: $e')));
       }
     }
   }
@@ -665,6 +857,7 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       final xFile = await _cameraController!.stopVideoRecording();
       if (fromLifecycle || !mounted) return;
+      final videoId = DateTime.now().millisecondsSinceEpoch.toString();
       final settings = VideoEffectSettings(
         stock: _selectedStock,
         grain: _grain,
@@ -674,8 +867,9 @@ class _CameraScreenState extends State<CameraScreen>
         saturation: _saturation,
         vignette: _vignette,
         scratchLevel: _scratchLevel,
+        analogRandomness: HiveService.analogRandomnessEnabled,
+        artifactSeed: videoId.hashCode,
       );
-      final videoId = DateTime.now().millisecondsSinceEpoch.toString();
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
@@ -690,9 +884,9 @@ class _CameraScreenState extends State<CameraScreen>
       );
     } catch (e) {
       if (!fromLifecycle && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al detener video: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al detener video: $e')));
       }
     } finally {
       if (mounted) {
@@ -991,6 +1185,9 @@ class _CameraScreenState extends State<CameraScreen>
                         vignette: _vignette,
                         scratchLevel: _scratchLevel,
                         lightLeakIndex: _lightLeakIndex,
+                        analogRandomness: HiveService.analogRandomnessEnabled,
+                        artifactSeed:
+                            _selectedStock.id.hashCode ^ _lightLeakIndex,
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
@@ -1027,6 +1224,26 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
               ),
             ),
+
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.48),
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.58),
+                    ],
+                    stops: const [0.0, 0.18, 0.62, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
 
           // ── Tap-to-Focus Indicator ─────────────────────────────────────
           if (_focusPoint != null)
@@ -1067,16 +1284,18 @@ class _CameraScreenState extends State<CameraScreen>
             ),
           ),
 
+          Positioned(
+            top: 18,
+            left: 16,
+            child: SafeArea(child: _buildCaptureSummary()),
+          ),
+
           if (_showExposureControl && _hasExposureControl)
-            Positioned(
-              top: 120,
-              right: 70,
-              child: _buildExposureControl(),
-            ),
+            Positioned(top: 120, right: 70, child: _buildExposureControl()),
 
           if (_isRecordingVideo)
             Positioned(
-              top: 56,
+              top: 122,
               left: 16,
               child: SafeArea(
                 child: Container(
@@ -1231,62 +1450,71 @@ class _CameraScreenState extends State<CameraScreen>
             child: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(RetroDimens.paddingSm),
-                child: Column(
-                  children: [
-                    _iconButton(
-                      _flashIcon,
-                      _cycleFlash,
-                      tooltip: 'Flash: ${_flashMode.name}',
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.42),
+                    borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.10),
                     ),
-                    _iconButton(
-                      Icons.grid_4x4,
-                      _cycleOverlayMode,
-                      active: _overlayMode != OverlayMode.off,
-                      label: _overlayLabel,
-                    ),
-                    _iconButton(
-                      Icons.exposure,
-                      () => setState(
-                        () => _showExposureControl = !_showExposureControl,
+                  ),
+                  child: Column(
+                    children: [
+                      _iconButton(
+                        _flashIcon,
+                        _cycleFlash,
+                        tooltip: 'Flash: ${_flashMode.name}',
                       ),
-                      active: _showExposureControl,
-                      enabled: _hasExposureControl,
-                      label: 'EV',
-                    ),
-                    _iconButton(
-                      Icons.filter_2,
-                      _toggleDoubleExposure,
-                      active:
-                          _doubleExposureEnabled || _hasPendingDoubleExposure,
-                      enabled: !_isVideoMode && !_hasPendingDoubleExposure,
-                      label: '2X',
-                      tooltip: 'Cuadrícula',
-                    ),
-                    _iconButton(
-                      Icons.flip_camera_ios,
-                      _flipCamera,
-                      enabled: !_hasPendingDoubleExposure,
-                      tooltip: 'Cambiar Cámara',
-                    ),
-                    _iconButton(
-                      Icons.timer,
-                      _cycleTimer,
-                      active:
-                          !_isVideoMode && _shutterTimer != ShutterTimer.off,
-                      label: _shutterTimer.label,
-                      enabled:
-                          !_doubleExposureEnabled && !_hasPendingDoubleExposure,
-                      tooltip: 'Temporizador',
-                    ),
-                    _iconButton(
-                      Icons.burst_mode,
-                      () => setState(() => _isBurstMode = !_isBurstMode),
-                      active: !_isVideoMode && _isBurstMode,
-                      enabled:
-                          !_doubleExposureEnabled && !_hasPendingDoubleExposure,
-                      tooltip: 'Modo Ráfaga',
-                    ),
-                  ],
+                      _iconButton(
+                        Icons.grid_4x4,
+                        _cycleOverlayMode,
+                        active: _overlayMode != OverlayMode.off,
+                        label: _overlayLabel,
+                      ),
+                      _iconButton(
+                        Icons.exposure,
+                        () => setState(
+                          () => _showExposureControl = !_showExposureControl,
+                        ),
+                        active: _showExposureControl,
+                        enabled: _hasExposureControl,
+                        label: 'EV',
+                      ),
+                      _iconButton(
+                        Icons.filter_2,
+                        _toggleDoubleExposure,
+                        active:
+                            _doubleExposureEnabled || _hasPendingDoubleExposure,
+                        enabled: !_isVideoMode && !_hasPendingDoubleExposure,
+                        label: '2X',
+                        tooltip: 'Cuadrícula',
+                      ),
+                      _iconButton(
+                        Icons.flip_camera_ios,
+                        _flipCamera,
+                        enabled: !_hasPendingDoubleExposure,
+                        tooltip: 'Cambiar Cámara',
+                      ),
+                      _iconButton(
+                        Icons.timer,
+                        _cycleTimer,
+                        active:
+                            !_isVideoMode && _shutterTimer != ShutterTimer.off,
+                        label: _shutterTimer.label,
+                        enabled:
+                            !_doubleExposureEnabled &&
+                            !_hasPendingDoubleExposure,
+                        tooltip: 'Temporizador',
+                      ),
+                      _iconButton(
+                        Icons.tune,
+                        _openQuickSettings,
+                        label: 'SET',
+                        tooltip: 'Quick settings',
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1310,6 +1538,14 @@ class _CameraScreenState extends State<CameraScreen>
     final seconds = (_recordingSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
   }
+
+  String get _captureModeLabel =>
+      _isVideoMode
+          ? 'VIDEO / 30s MAX'
+          : 'PHOTO / ${_currentRoll.remainingExposures} EXP';
+
+  String get _randomnessLabel =>
+      HiveService.analogRandomnessEnabled ? 'RANDOM ON' : 'RANDOM OFF';
 
   String get _overlayLabel => switch (_overlayMode) {
     OverlayMode.off => 'OFF',
@@ -1353,6 +1589,92 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
+  Widget _buildCaptureSummary() {
+    return Container(
+      width: 210,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.52),
+        borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _selectedStock.name,
+            style: GoogleFonts.spaceMono(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: _selectedStock.badgeColor,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _captureModeLabel,
+            style: GoogleFonts.spaceMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: RetroColors.textPrimary,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _statusChip(
+                _selectedStock.processLabel,
+                color: _selectedStock.badgeColor,
+              ),
+              _statusChip(
+                _randomnessLabel,
+                color:
+                    HiveService.analogRandomnessEnabled
+                        ? RetroColors.accent
+                        : RetroColors.textMuted,
+              ),
+              if (!_isVideoMode)
+                _statusChip(
+                  '${_currentRoll.remainingExposures} LEFT',
+                  color: RetroColors.dateYellow,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip(String label, {required Color color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.spaceMono(
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.9,
+        ),
+      ),
+    );
+  }
+
   Widget _iconButton(
     IconData icon,
     VoidCallback onPressed, {
@@ -1368,25 +1690,28 @@ class _CameraScreenState extends State<CameraScreen>
         child: GestureDetector(
           onTap: _isRecordingVideo || !enabled ? null : onPressed,
           child: Container(
-            width: 48,
-            height: 48,
+            width: 54,
+            height: 54,
             decoration: BoxDecoration(
               color:
                   active
-                      ? RetroColors.accent.withValues(alpha: 0.2)
-                      : Colors.black.withValues(alpha: 0.4),
-              shape: BoxShape.circle,
-              border:
-                  active
-                      ? Border.all(color: RetroColors.accent, width: 1.5)
-                      : null,
+                      ? RetroColors.accent.withValues(alpha: 0.22)
+                      : Colors.black.withValues(alpha: 0.44),
+              borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
+              border: Border.all(
+                color:
+                    active
+                        ? RetroColors.accent
+                        : Colors.white.withValues(alpha: 0.10),
+                width: active ? 1.5 : 1.0,
+              ),
             ),
             child: Stack(
               alignment: Alignment.center,
               children: [
                 Icon(
                   icon,
-                  size: 20,
+                  size: 22,
                   color:
                       !enabled
                           ? RetroColors.textMuted
@@ -1396,7 +1721,7 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
                 if (label != null)
                   Positioned(
-                    bottom: 4,
+                    bottom: 5,
                     child: Text(
                       label,
                       style: GoogleFonts.spaceMono(
@@ -1635,7 +1960,9 @@ class _CameraScreenState extends State<CameraScreen>
               width: 120,
               child: Slider(
                 value:
-                    _currentExposureOffset.clamp(sliderMin, sliderMax).toDouble(),
+                    _currentExposureOffset
+                        .clamp(sliderMin, sliderMax)
+                        .toDouble(),
                 min: sliderMin,
                 max: sliderMax,
                 onChanged:

@@ -35,14 +35,27 @@ class _VideoProcessingScreenState extends State<VideoProcessingScreen> {
   Timer? _progressTimer;
   double _progressValue = 0.15;
   String _statusText = 'REVELANDO VIDEO...';
+  final List<String> _statuses = [
+    'PREPARANDO CLIP...',
+    'APLICANDO LOOK...',
+    'SUMANDO ARTEFACTOS...',
+    'EXPORTANDO MASTER...',
+    'GUARDANDO EN LAB...',
+  ];
 
   @override
   void initState() {
     super.initState();
+    var statusIndex = 0;
     _progressTimer = Timer.periodic(const Duration(milliseconds: 450), (_) {
       if (!mounted) return;
       setState(() {
         _progressValue = (_progressValue + 0.08).clamp(0.15, 0.92);
+        if (statusIndex < _statuses.length - 1 &&
+            _progressValue > (statusIndex + 2) / (_statuses.length + 1)) {
+          statusIndex++;
+          _statusText = _statuses[statusIndex];
+        }
       });
     });
     _process();
@@ -61,7 +74,10 @@ class _VideoProcessingScreenState extends State<VideoProcessingScreen> {
         outputId: widget.videoId,
         settings: widget.settings,
       );
-      await Gal.putVideo(result.processedFile.path, album: RetroStrings.appName);
+      await Gal.putVideo(
+        result.processedFile.path,
+        album: RetroStrings.appName,
+      );
       final video = RetroVideo(
         id: widget.videoId,
         rawPath: widget.rawFile.path,
@@ -141,37 +157,126 @@ class _VideoProcessingScreenState extends State<VideoProcessingScreen> {
         children: [
           const Positioned.fill(child: GrainOverlay(opacity: 0.05)),
           Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Lottie.asset(RetroAssets.lottieDeveloping, height: 120, reverse: true),
-                const SizedBox(height: 40),
-                Text(
-                  _statusText,
-                  style: GoogleFonts.spaceMono(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: RetroColors.accent,
-                    letterSpacing: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(RetroDimens.paddingLg),
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxWidth: 420),
+                padding: const EdgeInsets.all(RetroDimens.paddingLg),
+                decoration: BoxDecoration(
+                  color: RetroColors.surface.withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
                   ),
                 ),
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 64),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _progressValue,
-                      backgroundColor: RetroColors.surfaceLight,
-                      valueColor: const AlwaysStoppedAnimation(RetroColors.accent),
-                      minHeight: 4,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _statusChip(
+                          widget.settings.stock.shortName,
+                          widget.settings.stock.badgeColor,
+                        ),
+                        _statusChip('VIDEO', RetroColors.accent),
+                        _statusChip(
+                          'GRAIN ${(widget.settings.grain * 100).round()}%',
+                          RetroColors.dateYellow,
+                        ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 24),
+                    Lottie.asset(
+                      RetroAssets.lottieDeveloping,
+                      height: 120,
+                      reverse: true,
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      'VIDEO LAB',
+                      style: GoogleFonts.spaceMono(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: RetroColors.accent,
+                        letterSpacing: 4,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 250),
+                      child: Text(
+                        _statusText,
+                        key: ValueKey(_statusText),
+                        style: GoogleFonts.spaceMono(
+                          fontSize: 11,
+                          color: RetroColors.textSecondary,
+                          letterSpacing: 1.8,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Applying the same analog treatment to the exported clip.',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: RetroColors.textSecondary,
+                        height: 1.45,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: _progressValue,
+                        backgroundColor: RetroColors.surfaceLight,
+                        valueColor: const AlwaysStoppedAnimation(
+                          RetroColors.accent,
+                        ),
+                        minHeight: 8,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '${(_progressValue * 100).round()}%',
+                        style: GoogleFonts.spaceMono(
+                          fontSize: 11,
+                          color: RetroColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _statusChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(RetroDimens.radiusXl),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.spaceMono(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.7,
+        ),
       ),
     );
   }
