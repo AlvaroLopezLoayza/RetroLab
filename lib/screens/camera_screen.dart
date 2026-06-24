@@ -75,12 +75,12 @@ class _CameraScreenState extends State<CameraScreen>
   final ScrollController _filmSelectorScrollController = ScrollController();
 
   // ── Effect Controls ────────────────────────────────────────────────────
-  double _grain = 0.10;
-  double _leakStrength = 0.10;
-  double _dustStrength = 0.05;
+  double _grain = RetroDefaults.grain;
+  double _leakStrength = RetroDefaults.leakStrength;
+  double _dustStrength = RetroDefaults.dustStrength;
   double _saturation = 1.0;
-  double _vignette = 0.3;
-  double _scratchLevel = 0.0;
+  double _vignette = RetroDefaults.vignette;
+  double _scratchLevel = RetroDefaults.scratchLevel;
   int _lightLeakIndex = 0;
 
   // ── Light Leak Preview Animation ──────────────────────────────────────
@@ -93,7 +93,7 @@ class _CameraScreenState extends State<CameraScreen>
   int _timerCountdown = 0;
 
   // ── Audio ──────────────────────────────────────────────────────────────
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  Future<AudioPool>? _shutterPoolFuture;
 
   // ── Grid / Flash ───────────────────────────────────────────────────────
   OverlayMode _overlayMode = OverlayMode.off;
@@ -144,6 +144,12 @@ class _CameraScreenState extends State<CameraScreen>
 
     _loadOrCreateRoll();
     _initializeEffectsFromFilmStock();
+    _shutterPoolFuture = AudioPool.createFromAsset(
+      path: RetroAssets.soundShutter.replaceFirst('assets/', ''),
+      minPlayers: 2,
+      maxPlayers: 4,
+      playerMode: PlayerMode.lowLatency,
+    );
     _initCamera();
   }
 
@@ -153,10 +159,15 @@ class _CameraScreenState extends State<CameraScreen>
     _recordingTimer?.cancel();
     _clearPendingDoubleExposure();
     unawaited(_disposeCameraController());
-    _audioPlayer.dispose();
+    unawaited(_disposeShutterPool());
     _focusAnimController.dispose();
     _filmSelectorScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _disposeShutterPool() async {
+    final pool = await _shutterPoolFuture;
+    await pool?.dispose();
   }
 
   void _scrollToSelectedFilm() {
@@ -341,14 +352,14 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _initializeEffectsFromFilmStock({bool resetTextures = true}) {
     setState(() {
-      _vignette = _selectedStock.baseVignette;
+      _vignette = RetroDefaults.vignette;
       _saturation = _selectedStock.saturation;
       if (resetTextures) {
-        _grain = 0.10;
-        _leakStrength = 0.10;
-        _dustStrength = 0.05;
+        _grain = RetroDefaults.grain;
+        _leakStrength = RetroDefaults.leakStrength;
+        _dustStrength = RetroDefaults.dustStrength;
       }
-      _scratchLevel = 0.0;
+      _scratchLevel = RetroDefaults.scratchLevel;
       _lightLeakIndex = _selectedStock.id.hashCode.abs() % 42;
     });
   }
@@ -594,7 +605,7 @@ class _CameraScreenState extends State<CameraScreen>
                             ),
                           ),
                           value: analogRandomness,
-                          activeThumbColor: RetroColors.accent,
+                          activeColor: RetroColors.accent,
                           onChanged: (value) async {
                             await HiveService.setAnalogRandomness(value);
                             if (!mounted) return;
@@ -619,7 +630,7 @@ class _CameraScreenState extends State<CameraScreen>
                             ),
                           ),
                           value: saveLocationData,
-                          activeThumbColor: RetroColors.accent,
+                          activeColor: RetroColors.accent,
                           onChanged: (value) async {
                             await HiveService.setSaveLocationData(value);
                             if (!mounted) return;
@@ -639,7 +650,7 @@ class _CameraScreenState extends State<CameraScreen>
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<DateStampStyle>(
-                          initialValue: dateStampStyle,
+                          value: dateStampStyle,
                           dropdownColor: RetroColors.surface,
                           decoration: const InputDecoration(labelText: 'Style'),
                           items:
@@ -661,7 +672,7 @@ class _CameraScreenState extends State<CameraScreen>
                         ),
                         const SizedBox(height: 10),
                         DropdownButtonFormField<DateStampPosition>(
-                          initialValue: dateStampPosition,
+                          value: dateStampPosition,
                           dropdownColor: RetroColors.surface,
                           decoration: const InputDecoration(
                             labelText: 'Position',
@@ -1036,11 +1047,18 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _playShutterSound() {
+    unawaited(_playShutterSoundAsync());
+  }
+
+  Future<void> _playShutterSoundAsync() async {
     try {
-      _audioPlayer.play(
-        AssetSource(RetroAssets.soundShutter.replaceFirst('assets/', '')),
-      );
-    } catch (_) {}
+      final pool = await _shutterPoolFuture;
+      if (pool == null) return;
+      final stop = await pool.start(volume: 1.0);
+      Future<void>.delayed(const Duration(milliseconds: 700), stop);
+    } catch (error) {
+      debugPrint('Shutter sound unavailable: $error');
+    }
   }
 
   Future<void> _importFromGallery() async {

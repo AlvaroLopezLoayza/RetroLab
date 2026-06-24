@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.retrolab.retrolab"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -46,4 +46,5 @@ flutter {
 dependencies {
     implementation("androidx.media3:media3-transformer:1.5.1")
     implementation("androidx.media3:media3-effect:1.5.1")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 }

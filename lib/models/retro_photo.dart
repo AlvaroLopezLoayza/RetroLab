@@ -3,6 +3,8 @@
 /// ─────────────────────────────────────────────────────────────────────────────
 library;
 
+import '../core/constants.dart';
+
 class RetroPhoto {
   final String id;
   final String originalPath;
@@ -29,13 +31,13 @@ class RetroPhoto {
     required this.filmStockId,
     required this.rollId,
     required this.capturedAt,
-    this.grain = 0.10,
-    this.leakStrength = 0.10,
-    this.dustStrength = 0.05,
+    this.grain = RetroDefaults.grain,
+    this.leakStrength = RetroDefaults.leakStrength,
+    this.dustStrength = RetroDefaults.dustStrength,
     this.lightLeakIndex = 0,
     this.saturation = 1.0,
-    this.vignette = 0.3,
-    this.scratchLevel = 0.0,
+    this.vignette = RetroDefaults.vignette,
+    this.scratchLevel = RetroDefaults.scratchLevel,
     this.dateStampStyle = 'classic90s',
     this.dateStampPosition = 'bottomRight',
     this.dateStampEnabled = true,
@@ -51,13 +53,19 @@ class RetroPhoto {
       filmStockId: map['filmStockId'] as String,
       rollId: map['rollId'] as String,
       capturedAt: DateTime.parse(map['capturedAt'] as String),
-      grain: (map['grain'] as num?)?.toDouble() ?? 0.10,
-      leakStrength: (map['leakStrength'] as num?)?.toDouble() ?? 0.10,
-      dustStrength: (map['dustStrength'] as num?)?.toDouble() ?? 0.05,
+      grain: (map['grain'] as num?)?.toDouble() ?? RetroDefaults.grain,
+      leakStrength:
+          (map['leakStrength'] as num?)?.toDouble() ??
+          RetroDefaults.leakStrength,
+      dustStrength:
+          (map['dustStrength'] as num?)?.toDouble() ??
+          RetroDefaults.dustStrength,
       lightLeakIndex: (map['lightLeakIndex'] as num?)?.toInt() ?? 0,
       saturation: (map['saturation'] as num?)?.toDouble() ?? 1.0,
-      vignette: (map['vignette'] as num?)?.toDouble() ?? 0.3,
-      scratchLevel: (map['scratchLevel'] as num?)?.toDouble() ?? 0.0,
+      vignette: (map['vignette'] as num?)?.toDouble() ?? RetroDefaults.vignette,
+      scratchLevel:
+          (map['scratchLevel'] as num?)?.toDouble() ??
+          RetroDefaults.scratchLevel,
       dateStampStyle: map['dateStampStyle'] as String? ?? 'classic90s',
       dateStampPosition: map['dateStampPosition'] as String? ?? 'bottomRight',
       dateStampEnabled: map['dateStampEnabled'] as bool? ?? true,

@@ -36,13 +36,13 @@ class ProcessingScreen extends StatefulWidget {
     required this.filmStock,
     required this.roll,
     required this.photoId,
-    this.grain = 0.10,
-    this.leakStrength = 0.10,
-    this.dustStrength = 0.05,
+    this.grain = RetroDefaults.grain,
+    this.leakStrength = RetroDefaults.leakStrength,
+    this.dustStrength = RetroDefaults.dustStrength,
     this.lightLeakIndex = 0,
     this.saturation = 1.0,
-    this.vignette = 0.3,
-    this.scratchLevel = 0.0,
+    this.vignette = RetroDefaults.vignette,
+    this.scratchLevel = RetroDefaults.scratchLevel,
     this.isImported = false,
   });
 

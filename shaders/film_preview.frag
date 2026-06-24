@@ -66,9 +66,29 @@ float shoulder(float x) {
   return start + (55.0 / 255.0) * clamp(shaped, 0.0, 1.0);
 }
 
+vec3 pull_black_point(vec3 color, float contrast) {
+  float black_point = clamp(0.018 + max(contrast, 0.0) * 0.07 + min(contrast, 0.0) * 0.02, 0.012, 0.052);
+  return clamp((color - vec3(black_point)) / (1.0 - black_point), 0.0, 1.0);
+}
+
 vec3 screen_blend(vec3 base, vec4 overlay, float strength) {
   float alpha = overlay.a * strength * 0.5;
   return 1.0 - (1.0 - base) * (1.0 - overlay.rgb * alpha);
+}
+
+vec3 soft_light(vec3 base, vec3 blend) {
+  vec3 low = 2.0 * base * blend + base * base * (1.0 - 2.0 * blend);
+  vec3 high = sqrt(max(base, 0.0)) * (2.0 * blend - 1.0) + 2.0 * base * (1.0 - blend);
+  return mix(low, high, step(0.5, blend));
+}
+
+vec3 leak_blend(vec3 base, vec4 overlay, float strength) {
+  float alpha = overlay.a * strength * 0.34;
+  vec3 screen = 1.0 - (1.0 - base) * (1.0 - overlay.rgb);
+  vec3 soft = soft_light(base, overlay.rgb);
+  vec3 blended = mix(soft, screen, 0.38);
+  float highlight_bias = 0.65 + dot(base, vec3(0.299, 0.587, 0.114)) * 0.35;
+  return mix(base, blended, clamp(alpha * highlight_bias, 0.0, 1.0));
 }
 
 vec3 halation_from_sample(vec3 sample_color) {
@@ -160,6 +180,7 @@ void main() {
   }
 
   color += u_shadow_lift * pow(1.0 - color, vec3(2.0));
+  color = pull_black_point(color, u_contrast);
   color = vec3(shoulder(color.r), shoulder(color.g), shoulder(color.b));
 
   if (u_grain > 0.0) {
@@ -181,7 +202,7 @@ void main() {
   color = add_border_glare(centered, color);
 
   color = screen_blend(color, texture(u_scratch_texture, uv), u_scratch);
-  color = screen_blend(color, texture(u_leak_texture, uv), u_leak);
+  color = leak_blend(color, texture(u_leak_texture, uv), u_leak);
   color = screen_blend(color, texture(u_dust_texture, uv), u_dust);
 
   frag_color = vec4(clamp(color, 0.0, 1.0), source.a);

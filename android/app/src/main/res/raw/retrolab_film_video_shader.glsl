@@ -4,6 +4,7 @@ uniform sampler2D uTexSampler;
 uniform sampler2D uScratchTexture;
 uniform sampler2D uLeakTexture;
 uniform sampler2D uDustTexture;
+uniform sampler2D uLutTexture;
 uniform vec2 uSize;
 uniform float uTemperature;
 uniform float uSaturation;
@@ -24,6 +25,8 @@ uniform float uScratch;
 uniform float uLeak;
 uniform float uDust;
 uniform float uHalation;
+uniform float uArtifactSeed;
+uniform float uLutStrength;
 uniform vec3 uColorMatrixRow0;
 uniform vec3 uColorMatrixRow1;
 uniform vec3 uColorMatrixRow2;
@@ -35,7 +38,7 @@ uniform vec2 uCaOffset;
 varying vec2 vTexSamplingCoord;
 
 float hashNoise(vec2 p) {
-  float h = sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453;
+  float h = sin(dot(p + vec2(uArtifactSeed * 0.017, uArtifactSeed * 0.031), vec2(12.9898, 78.233))) * 43758.5453;
   return fract(h);
 }
 
@@ -64,9 +67,29 @@ float shoulder(float x) {
   return start + (55.0 / 255.0) * clamp(shaped, 0.0, 1.0);
 }
 
+vec3 pullBlackPoint(vec3 color, float contrast) {
+  float blackPoint = clamp(0.018 + max(contrast, 0.0) * 0.07 + min(contrast, 0.0) * 0.02, 0.012, 0.052);
+  return clamp((color - vec3(blackPoint)) / (1.0 - blackPoint), 0.0, 1.0);
+}
+
 vec3 screenBlend(vec3 base, vec4 overlay, float strength) {
   float alpha = overlay.a * strength * 0.5;
   return 1.0 - (1.0 - base) * (1.0 - overlay.rgb * alpha);
+}
+
+vec3 softLight(vec3 base, vec3 blend) {
+  vec3 low = 2.0 * base * blend + base * base * (1.0 - 2.0 * blend);
+  vec3 high = sqrt(max(base, 0.0)) * (2.0 * blend - 1.0) + 2.0 * base * (1.0 - blend);
+  return mix(low, high, step(0.5, blend));
+}
+
+vec3 leakBlend(vec3 base, vec4 overlay, float strength) {
+  float alpha = overlay.a * strength * 0.34;
+  vec3 screen = 1.0 - (1.0 - base) * (1.0 - overlay.rgb);
+  vec3 soft = softLight(base, overlay.rgb);
+  vec3 blended = mix(soft, screen, 0.38);
+  float highlightBias = 0.65 + dot(base, vec3(0.299, 0.587, 0.114)) * 0.35;
+  return mix(base, blended, clamp(alpha * highlightBias, 0.0, 1.0));
 }
 
 vec3 halationFromSample(vec3 sampleColor) {
@@ -112,6 +135,17 @@ vec3 addBorderGlare(vec2 centered, vec3 color) {
   return 1.0 - (1.0 - color) * (1.0 - uGlareTint * glare);
 }
 
+vec3 applyLut(vec3 color) {
+  float size = 16.0;
+  float maxIndex = size - 1.0;
+  vec3 scaled = clamp(color, 0.0, 1.0) * maxIndex;
+  float b0 = floor(scaled.b);
+  float b1 = min(b0 + 1.0, maxIndex);
+  vec2 uv0 = (vec2(b0 * size + scaled.r, scaled.g) + 0.5) / vec2(size * size, size);
+  vec2 uv1 = (vec2(b1 * size + scaled.r, scaled.g) + 0.5) / vec2(size * size, size);
+  return mix(texture2D(uLutTexture, uv0).rgb, texture2D(uLutTexture, uv1).rgb, fract(scaled.b));
+}
+
 void main() {
   vec2 uv = vTexSamplingCoord;
   vec2 centered = uv - vec2(0.5);
@@ -152,6 +186,7 @@ void main() {
   }
 
   color += uShadowLift * pow(1.0 - color, vec3(2.0));
+  color = pullBlackPoint(color, uContrast);
   color = vec3(shoulder(color.r), shoulder(color.g), shoulder(color.b));
 
   if (uGrain > 0.0) {
@@ -171,9 +206,12 @@ void main() {
   float vignetteAmount = clamp(distanceFromCenter - 0.4, 0.0, 1.0) * uVignette;
   color *= 1.0 - vignetteAmount;
   color = addBorderGlare(centered, color);
+  if (uLutStrength > 0.0) {
+    color = mix(color, applyLut(color), uLutStrength);
+  }
 
   color = screenBlend(color, texture2D(uScratchTexture, uv), uScratch);
-  color = screenBlend(color, texture2D(uLeakTexture, uv), uLeak);
+  color = leakBlend(color, texture2D(uLeakTexture, uv), uLeak);
   color = screenBlend(color, texture2D(uDustTexture, uv), uDust);
 
   gl_FragColor = vec4(clamp(color, 0.0, 1.0), source.a);

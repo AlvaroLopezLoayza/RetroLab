@@ -29,10 +29,15 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
+    private val imageExecutor = Executors.newSingleThreadExecutor()
+    private lateinit var imageProcessor: RetrolabNativeImageProcessor
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        imageProcessor = RetrolabNativeImageProcessor(this)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "retrolab/video",
@@ -57,6 +62,52 @@ class MainActivity : FlutterActivity() {
                 result.error("video_args", error.message, null)
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "retrolab/native_image_processor",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "initialize" -> result.success(null)
+                "processImage" -> {
+                    val imageBytes = call.argument<ByteArray>("imageBytes")
+                    @Suppress("UNCHECKED_CAST")
+                    val request = call.argument<Map<String, Any?>>("request")
+                    if (imageBytes == null || request == null) {
+                        result.error("image_args", "Missing imageBytes or request.", null)
+                        return@setMethodCallHandler
+                    }
+                    val scratchBytes = call.argument<ByteArray>("scratchBytes")
+                    val leakBytes = call.argument<ByteArray>("leakBytes")
+                    val dustBytes = call.argument<ByteArray>("dustBytes")
+                    imageExecutor.execute {
+                        try {
+                            val bytes = imageProcessor.process(
+                                imageBytes,
+                                request,
+                                scratchBytes,
+                                leakBytes,
+                                dustBytes,
+                            )
+                            runOnUiThread { result.success(bytes) }
+                        } catch (error: Throwable) {
+                            android.util.Log.e("RetroLabNative", "processImage failed", error)
+                            runOnUiThread {
+                                result.error("image_process", error.message, null)
+                            }
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        imageExecutor.execute {
+            imageProcessor.close()
+        }
+        imageExecutor.shutdown()
+        super.onDestroy()
     }
 }
 
@@ -275,6 +326,7 @@ private class RetroFilterShaderProgram(
             glProgram.setSamplerTexIdUniform("uScratchTexture", scratchTextureId, 1)
             glProgram.setSamplerTexIdUniform("uLeakTexture", leakTextureId, 2)
             glProgram.setSamplerTexIdUniform("uDustTexture", dustTextureId, 3)
+            glProgram.setSamplerTexIdUniform("uLutTexture", inputTexId, 4)
             glProgram.setFloatsUniform("uSize", floatArrayOf(width.toFloat(), height.toFloat()))
             glProgram.setFloatUniform("uTemperature", settings.temperature)
             glProgram.setFloatUniform("uSaturation", settings.saturation)
@@ -295,6 +347,8 @@ private class RetroFilterShaderProgram(
             glProgram.setFloatUniform("uLeak", settings.leakStrength)
             glProgram.setFloatUniform("uDust", settings.dustStrength)
             glProgram.setFloatUniform("uHalation", settings.halation)
+            glProgram.setFloatUniform("uArtifactSeed", 0f)
+            glProgram.setFloatUniform("uLutStrength", 0f)
             glProgram.setFloatsUniform("uColorMatrixRow0", settings.colorMatrixRow0)
             glProgram.setFloatsUniform("uColorMatrixRow1", settings.colorMatrixRow1)
             glProgram.setFloatsUniform("uColorMatrixRow2", settings.colorMatrixRow2)

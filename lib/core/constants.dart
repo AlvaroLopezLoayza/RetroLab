@@ -69,6 +69,16 @@ class RetroDimens {
   static const double iconSizeLg = 32.0;
 }
 
+class RetroDefaults {
+  RetroDefaults._();
+
+  static const double grain = 0.58;
+  static const double leakStrength = 0.35;
+  static const double dustStrength = 1.0;
+  static const double vignette = 1.0;
+  static const double scratchLevel = 1.0;
+}
+
 // ── Strings ──────────────────────────────────────────────────────────────────
 
 class RetroStrings {

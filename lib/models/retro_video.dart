@@ -1,5 +1,7 @@
 library;
 
+import '../core/constants.dart';
+
 class RetroVideo {
   final String id;
   final String rawPath;
@@ -24,13 +26,13 @@ class RetroVideo {
     required this.filmStockId,
     required this.capturedAt,
     required this.durationMs,
-    this.grain = 0.10,
-    this.leakStrength = 0.10,
-    this.dustStrength = 0.05,
+    this.grain = RetroDefaults.grain,
+    this.leakStrength = RetroDefaults.leakStrength,
+    this.dustStrength = RetroDefaults.dustStrength,
     this.lightLeakIndex = 0,
     this.saturation = 1.0,
-    this.vignette = 0.3,
-    this.scratchLevel = 0.0,
+    this.vignette = RetroDefaults.vignette,
+    this.scratchLevel = RetroDefaults.scratchLevel,
   });
 
   factory RetroVideo.fromMap(Map map) {
@@ -42,13 +44,19 @@ class RetroVideo {
       filmStockId: map['filmStockId'] as String,
       capturedAt: DateTime.parse(map['capturedAt'] as String),
       durationMs: (map['durationMs'] as num?)?.toInt() ?? 0,
-      grain: (map['grain'] as num?)?.toDouble() ?? 0.10,
-      leakStrength: (map['leakStrength'] as num?)?.toDouble() ?? 0.10,
-      dustStrength: (map['dustStrength'] as num?)?.toDouble() ?? 0.05,
+      grain: (map['grain'] as num?)?.toDouble() ?? RetroDefaults.grain,
+      leakStrength:
+          (map['leakStrength'] as num?)?.toDouble() ??
+          RetroDefaults.leakStrength,
+      dustStrength:
+          (map['dustStrength'] as num?)?.toDouble() ??
+          RetroDefaults.dustStrength,
       lightLeakIndex: (map['lightLeakIndex'] as num?)?.toInt() ?? 0,
       saturation: (map['saturation'] as num?)?.toDouble() ?? 1.0,
-      vignette: (map['vignette'] as num?)?.toDouble() ?? 0.3,
-      scratchLevel: (map['scratchLevel'] as num?)?.toDouble() ?? 0.0,
+      vignette: (map['vignette'] as num?)?.toDouble() ?? RetroDefaults.vignette,
+      scratchLevel:
+          (map['scratchLevel'] as num?)?.toDouble() ??
+          RetroDefaults.scratchLevel,
     );
   }
 

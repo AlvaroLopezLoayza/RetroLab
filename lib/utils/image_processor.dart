@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gal/gal.dart';
 import 'package:image/image.dart' as img;
@@ -13,6 +14,9 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/constants.dart';
 import '../core/film_stocks.dart';
+import '../services/image_pipeline/dart_image_processing_backend.dart';
+import '../services/image_pipeline/image_processing_request.dart';
+import '../services/image_pipeline/native_gpu_image_processing_backend.dart';
 
 class ImageDecodeException implements Exception {
   final String message;
@@ -43,6 +47,9 @@ class ImageProcessor {
   ImageProcessor._();
 
   static final Random _random = Random();
+  static const bool forceDartProcessor = bool.fromEnvironment(
+    'RETROLAB_FORCE_DART_PROCESSOR',
+  );
 
   static Future<File> composeDoubleExposure(File first, File second) async {
     final firstBytes = await first.readAsBytes();
@@ -102,12 +109,12 @@ class ImageProcessor {
     File original, {
     required FilmStock filmStock,
     double? grain,
-    double leakStrength = 0.6,
-    double dustStrength = 0.0,
+    double leakStrength = RetroDefaults.leakStrength,
+    double dustStrength = RetroDefaults.dustStrength,
     int? lightLeakIndex,
     double? saturationOverride,
     double? vignette,
-    double scratchLevel = 0.0,
+    double scratchLevel = RetroDefaults.scratchLevel,
     bool dateStampEnabled = true,
     DateStampStyle dateStampStyle = DateStampStyle.classic90s,
     DateStampPosition dateStampPosition = DateStampPosition.bottomRight,
@@ -117,62 +124,97 @@ class ImageProcessor {
     bool saveLocationData = false,
   }) async {
     final bytes = await original.readAsBytes();
+    final capture = captureDate ?? DateTime.now();
+    final leakIndex = lightLeakIndex ?? _random.nextInt(42);
+    final seed = artifactSeed ?? filmStock.id.hashCode;
+    final effectiveGrain = grain ?? RetroDefaults.grain;
+    final effectiveLeak = leakStrength;
+    final effectiveDust = dustStrength;
+    final effectiveScratch = scratchLevel;
+    final effectiveSaturation =
+        filmStock.saturation == 0.0
+            ? 0.0
+            : (saturationOverride ?? filmStock.saturation);
+    final effectiveVignette = vignette ?? RetroDefaults.vignette;
+    final request = ImageProcessingRequest.fromFilmStock(
+      filmStock: filmStock,
+      grain: effectiveGrain,
+      leakStrength: effectiveLeak,
+      dustStrength: effectiveDust,
+      lightLeakIndex: leakIndex,
+      saturation: effectiveSaturation,
+      vignette: effectiveVignette,
+      scratchLevel: effectiveScratch,
+      dateStampEnabled: dateStampEnabled,
+      dateStampStyle: dateStampStyle,
+      dateStampPosition: dateStampPosition,
+      analogRandomness: analogRandomness,
+      artifactSeed: seed,
+      captureDate: capture,
+      saveLocationData: saveLocationData,
+    );
 
     Uint8List? scratchBytes;
     Uint8List? leakBytes;
     Uint8List? dustBytes;
-
-    if (scratchLevel > 0) {
-      try {
-        final data = await rootBundle.load(RetroAssets.textureScratch);
-        scratchBytes = data.buffer.asUint8List();
-      } catch (e) {
-        debugPrint('[RetroLab] Scratch load failed: $e');
-      }
-    }
-
-    if (leakStrength > 0) {
-      final leakIndex = lightLeakIndex ?? _random.nextInt(42);
-      try {
-        final data = await rootBundle.load(RetroAssets.lightLeak(leakIndex));
-        leakBytes = data.buffer.asUint8List();
-      } catch (e) {
-        debugPrint('[RetroLab] Leak asset $leakIndex failed: $e');
-      }
-    }
-
-    if (dustStrength > 0) {
-      try {
-        final data = await rootBundle.load(RetroAssets.textureDust);
-        dustBytes = data.buffer.asUint8List();
-      } catch (e) {
-        debugPrint('[RetroLab] Dust load failed: $e');
-      }
-    }
+    final useNative = Platform.isAndroid && !forceDartProcessor;
 
     try {
-      final processedBytes = await Isolate.run(() {
-        return _processImageBytesInIsolate(
-          bytes,
-          filmStock: filmStock,
-          grain: grain,
-          saturationOverride: saturationOverride,
-          vignette: vignette,
-          scratchLevel: scratchLevel,
-          dateStampEnabled: dateStampEnabled,
-          dateStampStyle: dateStampStyle,
-          dateStampPosition: dateStampPosition,
-          analogRandomness: analogRandomness,
-          artifactSeed: artifactSeed,
-          captureDate: captureDate ?? DateTime.now(),
-          saveLocationData: saveLocationData,
+      Uint8List processedBytes;
+      if (useNative) {
+        final sw = Stopwatch()..start();
+        try {
+          processedBytes = await NativeGpuImageProcessingBackend().process(
+            originalBytes: bytes,
+            request: request,
+            scratchBytes: scratchBytes,
+            leakBytes: leakBytes,
+            dustBytes: dustBytes,
+          );
+          debugPrint(
+            '[RetroLab] Native processing total: ${sw.elapsedMilliseconds}ms',
+          );
+        } catch (e, st) {
+          debugPrint(
+            '[RetroLab] Native GPU processing failed, falling back to Dart: $e\n$st',
+          );
+          (scratchBytes, leakBytes, dustBytes) = await _loadOverlayBytes(
+            request,
+          );
+          processedBytes = await _processWithDart(
+            bytes,
+            filmStock: filmStock,
+            request: request,
+            scratchBytes: scratchBytes,
+            leakBytes: leakBytes,
+            dustBytes: dustBytes,
+          );
+        }
+      } else {
+        (scratchBytes, leakBytes, dustBytes) = await _loadOverlayBytes(request);
+        processedBytes = await DartImageProcessingBackend(({
+          required originalBytes,
+          required request,
+          scratchBytes,
+          leakBytes,
+          dustBytes,
+        }) {
+          return _processWithDart(
+            originalBytes,
+            filmStock: filmStock,
+            request: request,
+            scratchBytes: scratchBytes,
+            leakBytes: leakBytes,
+            dustBytes: dustBytes,
+          );
+        }).process(
+          originalBytes: bytes,
+          request: request,
           scratchBytes: scratchBytes,
           leakBytes: leakBytes,
           dustBytes: dustBytes,
-          leakStrength: leakStrength,
-          dustStrength: dustStrength,
         );
-      });
+      }
 
       final appDir = await getApplicationDocumentsDirectory();
       final retroDir = Directory('${appDir.path}/RetroLab');
@@ -196,6 +238,83 @@ class ImageProcessor {
       if (e is ImageDecodeException || e is ImageProcessingException) rethrow;
       throw ImageProcessingException('Unexpected error: $e');
     }
+  }
+
+  static Future<(Uint8List?, Uint8List?, Uint8List?)> _loadOverlayBytes(
+    ImageProcessingRequest request,
+  ) async {
+    Uint8List? scratchBytes;
+    Uint8List? leakBytes;
+    Uint8List? dustBytes;
+
+    if (request.scratchLevel > 0) {
+      try {
+        final data = await rootBundle.load(RetroAssets.textureScratch);
+        scratchBytes = data.buffer.asUint8List();
+      } catch (e) {
+        debugPrint('[RetroLab] Scratch load failed: $e');
+      }
+    }
+
+    if (request.leakStrength > 0) {
+      try {
+        final data = await rootBundle.load(
+          RetroAssets.lightLeak(request.lightLeakIndex),
+        );
+        leakBytes = data.buffer.asUint8List();
+      } catch (e) {
+        debugPrint(
+          '[RetroLab] Leak asset ${request.lightLeakIndex} failed: $e',
+        );
+      }
+    }
+
+    if (request.dustStrength > 0) {
+      try {
+        final data = await rootBundle.load(RetroAssets.textureDust);
+        dustBytes = data.buffer.asUint8List();
+      } catch (e) {
+        debugPrint('[RetroLab] Dust load failed: $e');
+      }
+    }
+
+    return (scratchBytes, leakBytes, dustBytes);
+  }
+
+  static Future<Uint8List> _processWithDart(
+    Uint8List bytes, {
+    required FilmStock filmStock,
+    required ImageProcessingRequest request,
+    Uint8List? scratchBytes,
+    Uint8List? leakBytes,
+    Uint8List? dustBytes,
+  }) {
+    return Isolate.run(() {
+      return _processImageBytesInIsolate(
+        bytes,
+        filmStock: filmStock,
+        grain: request.grain,
+        saturationOverride: request.saturation,
+        vignette: request.vignette,
+        scratchLevel: request.scratchLevel,
+        dateStampEnabled: request.dateStampEnabled,
+        dateStampStyle: DateStampStyle.values.byName(request.dateStampStyle),
+        dateStampPosition: DateStampPosition.values.byName(
+          request.dateStampPosition,
+        ),
+        analogRandomness: request.analogRandomness,
+        artifactSeed: request.artifactSeed,
+        captureDate: DateTime.fromMillisecondsSinceEpoch(
+          request.captureTimestampMillis,
+        ),
+        saveLocationData: request.saveLocationData,
+        scratchBytes: scratchBytes,
+        leakBytes: leakBytes,
+        dustBytes: dustBytes,
+        leakStrength: request.leakStrength,
+        dustStrength: request.dustStrength,
+      );
+    });
   }
 
   static Uint8List _processImageBytesInIsolate(
@@ -229,12 +348,15 @@ class ImageProcessor {
       image.exif = img.ExifData();
     }
 
-    final effectiveGrain = grain ?? filmStock.baseGrain;
+    final effectiveGrain = grain ?? RetroDefaults.grain;
+    final effectiveLeak = leakStrength;
+    final effectiveDust = dustStrength;
+    final effectiveScratch = scratchLevel;
     final effectiveSaturation =
         filmStock.saturation == 0.0
             ? 0.0
             : (saturationOverride ?? filmStock.saturation);
-    final effectiveVignette = vignette ?? filmStock.baseVignette;
+    final effectiveVignette = vignette ?? RetroDefaults.vignette;
     final artifacts = filmStock.resolveArtifacts(
       seed: artifactSeed ?? filmStock.id.hashCode,
       analogRandomness: analogRandomness,
@@ -278,14 +400,14 @@ class ImageProcessor {
       );
     }
 
-    if (scratchLevel > 0 && scratchBytes != null) {
-      _applyTextureOverlay(image, scratchBytes, scratchLevel, true);
+    if (effectiveScratch > 0 && scratchBytes != null) {
+      _applyTextureOverlay(image, scratchBytes, effectiveScratch, true);
     }
     if (leakBytes != null) {
-      _applyTextureOverlay(image, leakBytes, leakStrength, true);
+      _applyLightLeakOverlay(image, leakBytes, effectiveLeak);
     }
     if (dustBytes != null) {
-      _applyTextureOverlay(image, dustBytes, dustStrength, true);
+      _applyTextureOverlay(image, dustBytes, effectiveDust, true);
     }
 
     if (analogRandomness) {
@@ -416,6 +538,10 @@ class ImageProcessor {
           b += stock.shadowLift * pow(1.0 - b, 2.0).toDouble();
         }
 
+        r = _pullBlackPoint(r, stock.contrast);
+        g = _pullBlackPoint(g, stock.contrast);
+        b = _pullBlackPoint(b, stock.contrast);
+
         pixel.r = (_applyShoulder(r) * 255.0).round().clamp(0, 255);
         pixel.g = (_applyShoulder(g) * 255.0).round().clamp(0, 255);
         pixel.b = (_applyShoulder(b) * 255.0).round().clamp(0, 255);
@@ -447,6 +573,14 @@ class ImageProcessor {
     final t = ((x - 200.0 / 255.0) / (55.0 / 255.0)).clamp(0.0, 2.0);
     final shoulder = (t * 1.35) / (1.0 + 0.35 * t);
     return (200.0 / 255.0) + (55.0 / 255.0) * shoulder.clamp(0.0, 1.0);
+  }
+
+  static double _pullBlackPoint(double value, double contrast) {
+    final blackPoint = (0.018 +
+            max(contrast, 0.0) * 0.07 +
+            min(contrast, 0.0) * 0.02)
+        .clamp(0.012, 0.052);
+    return ((value - blackPoint) / (1.0 - blackPoint)).clamp(0.0, 1.0);
   }
 
   static double _smoothstep(double edge0, double edge1, double x) {
@@ -790,6 +924,64 @@ class ImageProcessor {
         basePixel.b = (b * 255).round().clamp(0, 255);
       }
     }
+  }
+
+  static void _applyLightLeakOverlay(
+    img.Image image,
+    Uint8List bytes,
+    double strength,
+  ) {
+    if (strength <= 0) return;
+
+    final overlayImage = img.decodeImage(bytes);
+    if (overlayImage == null) return;
+
+    final resizedOverlay = img.copyResize(
+      overlayImage,
+      width: image.width,
+      height: image.height,
+    );
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final basePixel = image.getPixel(x, y);
+        final overPixel = resizedOverlay.getPixel(x, y);
+        final r = basePixel.r / 255.0;
+        final g = basePixel.g / 255.0;
+        final b = basePixel.b / 255.0;
+        final or = overPixel.r / 255.0;
+        final og = overPixel.g / 255.0;
+        final ob = overPixel.b / 255.0;
+        final alpha = (overPixel.a / 255.0) * strength * 0.34;
+        final luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        final amount = (alpha * (0.65 + luminance * 0.35)).clamp(0.0, 1.0);
+
+        final screenR = 1.0 - (1.0 - r) * (1.0 - or);
+        final screenG = 1.0 - (1.0 - g) * (1.0 - og);
+        final screenB = 1.0 - (1.0 - b) * (1.0 - ob);
+        final softR = _softLightChannel(r, or);
+        final softG = _softLightChannel(g, og);
+        final softB = _softLightChannel(b, ob);
+
+        basePixel.r = (_mix(r, _mix(softR, screenR, 0.38), amount) * 255)
+            .round()
+            .clamp(0, 255);
+        basePixel.g = (_mix(g, _mix(softG, screenG, 0.38), amount) * 255)
+            .round()
+            .clamp(0, 255);
+        basePixel.b = (_mix(b, _mix(softB, screenB, 0.38), amount) * 255)
+            .round()
+            .clamp(0, 255);
+      }
+    }
+  }
+
+  static double _softLightChannel(double base, double blend) {
+    if (blend < 0.5) {
+      return 2.0 * base * blend + base * base * (1.0 - 2.0 * blend);
+    }
+    return sqrt(base.clamp(0.0, 1.0)) * (2.0 * blend - 1.0) +
+        2.0 * base * (1.0 - blend);
   }
 
   static Future<File> createPolaroidFrame(

@@ -45,9 +45,6 @@ class _EditorScreenState extends State<EditorScreen> {
           ? '${_dateStampStyle.label} · ${_dateStampPosition.label}'
           : 'Disabled';
 
-  String get _randomnessSummary =>
-      HiveService.analogRandomnessEnabled ? 'Enabled' : 'Disabled';
-
   @override
   void initState() {
     super.initState();
@@ -61,18 +58,17 @@ class _EditorScreenState extends State<EditorScreen> {
     _scratchLevel = widget.photo.scratchLevel;
     _dateStampEnabled = widget.photo.dateStampEnabled;
     _dateStampStyle = DateStampStyle.values.firstWhere(
-      (s) => s.name == widget.photo.dateStampStyle,
+      (style) => style.name == widget.photo.dateStampStyle,
       orElse: () => DateStampStyle.classic90s,
     );
     _dateStampPosition = DateStampPosition.values.firstWhere(
-      (p) => p.name == widget.photo.dateStampPosition,
+      (position) => position.name == widget.photo.dateStampPosition,
       orElse: () => DateStampPosition.bottomRight,
     );
   }
 
   Future<void> _reprocess() async {
     setState(() => _isProcessing = true);
-
     try {
       final originalFile = File(widget.photo.originalPath);
       if (!originalFile.existsSync()) {
@@ -114,7 +110,6 @@ class _EditorScreenState extends State<EditorScreen> {
       await HiveService.photosBox.put(updatedPhoto.id, updatedPhoto.toMap());
 
       if (!mounted) return;
-
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder:
@@ -124,11 +119,11 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
         ),
       );
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Reprocess failed: $e')));
+      ).showSnackBar(SnackBar(content: Text('Reprocess failed: $error')));
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -144,367 +139,285 @@ class _EditorScreenState extends State<EditorScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          if (_isProcessing)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: RetroColors.accent,
-                ),
-              ),
-            )
-          else
-            TextButton(
-              onPressed: _reprocess,
-              child: Text(
-                'DEVELOP',
-                style: GoogleFonts.spaceMono(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: RetroColors.accent,
-                  letterSpacing: 1,
-                ),
-              ),
-            ),
-        ],
       ),
-      body: Stack(
-        children: [
-          const Positioned.fill(child: GrainOverlay(opacity: 0.03)),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.16),
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.28),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(RetroDimens.paddingMd),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeroCard(),
-                const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: RetroColors.surface,
-                    borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.08),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.24),
-                        blurRadius: 24,
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(12),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(RetroDimens.radiusMd),
-                    child: SizedBox(
-                      height: 260,
-                      width: double.infinity,
-                      child: FilmPreview(
-                        stock: _selectedStock,
-                        grain: _grain,
-                        leakStrength: _leakStrength,
-                        dustStrength: _dustStrength,
-                        saturation: _saturation,
-                        vignette: _vignette,
-                        scratchLevel: _scratchLevel,
-                        lightLeakIndex: _lightLeakIndex,
-                        analogRandomness: HiveService.analogRandomnessEnabled,
-                        artifactSeed: widget.photo.id.hashCode,
-                        child: Image.file(
-                          File(widget.photo.originalPath),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                _sectionCard(
-                  title: 'LOOK',
-                  subtitle: 'Film stock and overall response curve.',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      FilmStockSelector(
-                        selectedStock: _selectedStock,
-                        onStockChanged: (stock) {
-                          setState(() {
-                            _selectedStock = stock;
-                            _saturation = stock.saturation;
-                            _vignette = stock.baseVignette;
-                            _lightLeakIndex = stock.id.hashCode.abs() % 42;
-                          });
-                        },
-                        compact: true,
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _summaryChip(
-                            _selectedStock.shortName,
-                            _selectedStock.badgeColor,
-                          ),
-                          _summaryChip(
-                            'SAT ${_saturation.toStringAsFixed(2)}',
-                            RetroColors.accent,
-                          ),
-                          _summaryChip(
-                            'VIG ${_vignette.toStringAsFixed(2)}',
-                            Colors.white70,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                _sectionCard(
-                  title: 'TEXTURE',
-                  subtitle: 'Analog imperfections and tone adjustments.',
-                  child: Column(
-                    children: [
-                      RetroSlider(
-                        label: 'GRAIN',
-                        icon: Icons.grain,
-                        value: _grain,
-                        onChanged: (v) => setState(() => _grain = v),
-                      ),
-                      RetroSlider(
-                        label: 'LEAK',
-                        icon: Icons.flare,
-                        value: _leakStrength,
-                        onChanged: (v) => setState(() => _leakStrength = v),
-                      ),
-                      RetroSlider(
-                        label: 'DUST',
-                        icon: Icons.blur_on,
-                        value: _dustStrength,
-                        onChanged: (v) => setState(() => _dustStrength = v),
-                      ),
-                      RetroSlider(
-                        label: 'SAT',
-                        icon: Icons.palette,
-                        value: _saturation,
-                        min: 0,
-                        max: 2.0,
-                        onChanged: (v) => setState(() => _saturation = v),
-                      ),
-                      RetroSlider(
-                        label: 'VIGNETTE',
-                        icon: Icons.vignette,
-                        value: _vignette,
-                        onChanged: (v) => setState(() => _vignette = v),
-                      ),
-                      RetroSlider(
-                        label: 'SCRATCH',
-                        icon: Icons.brush,
-                        value: _scratchLevel,
-                        onChanged: (v) => setState(() => _scratchLevel = v),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                _sectionCard(
-                  title: 'DATE STAMP',
-                  subtitle:
-                      'Overlay metadata with the same final output settings.',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SwitchListTile(
-                        title: Text(
-                          'Show Date Stamp',
-                          style: GoogleFonts.spaceMono(
-                            fontSize: 12,
-                            color: RetroColors.textPrimary,
-                          ),
-                        ),
-                        subtitle: Text(
-                          _dateStampSummary,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: RetroColors.textSecondary,
-                          ),
-                        ),
-                        value: _dateStampEnabled,
-                        onChanged: (v) => setState(() => _dateStampEnabled = v),
-                        activeThumbColor: RetroColors.accent,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _summaryChip(
-                            'RANDOMNESS $_randomnessSummary',
-                            RetroColors.dateYellow,
-                          ),
-                          _summaryChip(
-                            _dateStampEnabled ? 'STAMP ON' : 'STAMP OFF',
-                            _dateStampEnabled
-                                ? RetroColors.success
-                                : Colors.white70,
-                          ),
-                        ],
-                      ),
-                      if (_dateStampEnabled) ...[
-                        const SizedBox(height: 16),
-                        _fieldLabel('STYLE'),
-                        const SizedBox(height: 10),
-                        _chipSelector<DateStampStyle>(
-                          DateStampStyle.values,
-                          _dateStampStyle,
-                          (s) => s.label,
-                          (s) => setState(() => _dateStampStyle = s),
-                        ),
-                        const SizedBox(height: 16),
-                        _fieldLabel('POSITION'),
-                        const SizedBox(height: 10),
-                        _chipSelector<DateStampPosition>(
-                          DateStampPosition.values,
-                          _dateStampPosition,
-                          (p) => p.label,
-                          (p) => setState(() => _dateStampPosition = p),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 40),
-              ],
-            ),
-          ),
-        ],
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Expanded(flex: 5, child: _previewPane()),
+            Expanded(flex: 4, child: _controlsPane()),
+          ],
+        ),
       ),
+      bottomNavigationBar: _developBar(),
     );
   }
 
-  Widget _buildHeroCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(RetroDimens.paddingMd),
-      decoration: BoxDecoration(
-        color: RetroColors.surface,
-        borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'FINE TUNE THIS FRAME',
-            style: GoogleFonts.spaceMono(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: RetroColors.accent,
-              letterSpacing: 1.8,
+  Widget _previewPane() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        FilmPreview(
+          stock: _selectedStock,
+          grain: _grain,
+          leakStrength: _leakStrength,
+          dustStrength: _dustStrength,
+          saturation: _saturation,
+          vignette: _vignette,
+          scratchLevel: _scratchLevel,
+          lightLeakIndex: _lightLeakIndex,
+          analogRandomness: HiveService.analogRandomnessEnabled,
+          artifactSeed: widget.photo.id.hashCode,
+          child: ColoredBox(
+            color: Colors.black,
+            child: Image.file(
+              File(widget.photo.originalPath),
+              fit: BoxFit.contain,
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            _selectedStock.name,
-            style: GoogleFonts.spaceMono(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: RetroColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Preview stays close to final output while keeping edits fast.',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: RetroColors.textSecondary,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
+        ),
+        const Positioned.fill(child: GrainOverlay(opacity: 0.025)),
+        Positioned(
+          left: 16,
+          right: 16,
+          top: 12,
+          child: Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
+              _summaryChip(_selectedStock.shortName, _selectedStock.badgeColor),
               _summaryChip(
-                widget.photo.isImported ? 'IMPORTED' : 'CAMERA FRAME',
+                widget.photo.isImported ? 'IMPORTED' : 'CAMERA',
                 RetroColors.accent,
               ),
               _summaryChip(
-                'RANDOMNESS $_randomnessSummary',
-                RetroColors.dateYellow,
-              ),
-              _summaryChip(
-                _dateStampEnabled ? 'STAMP READY' : 'NO STAMP',
+                _dateStampEnabled ? 'STAMP ON' : 'STAMP OFF',
                 _dateStampEnabled ? RetroColors.success : Colors.white70,
               ),
             ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  Widget _controlsPane() {
+    return DefaultTabController(
+      length: 3,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: RetroColors.surfaceLight)),
+        ),
+        child: Column(
+          children: [
+            TabBar(
+              labelColor: RetroColors.accent,
+              unselectedLabelColor: RetroColors.textSecondary,
+              indicatorColor: RetroColors.accent,
+              labelStyle: GoogleFonts.spaceMono(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+              ),
+              tabs: const [
+                Tab(icon: Icon(Icons.camera_roll), text: 'LOOK'),
+                Tab(icon: Icon(Icons.tune), text: 'TEXTURE'),
+                Tab(icon: Icon(Icons.date_range), text: 'DATE'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _scrollTab(_lookControls()),
+                  _scrollTab(_textureControls()),
+                  _scrollTab(_dateControls()),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _sectionCard({
-    required String title,
-    required String subtitle,
-    required Widget child,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(RetroDimens.paddingMd),
-      decoration: BoxDecoration(
-        color: RetroColors.surface,
-        borderRadius: BorderRadius.circular(RetroDimens.radiusLg),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
+  Widget _scrollTab(Widget child) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      child: child,
+    );
+  }
+
+  Widget _lookControls() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FilmStockSelector(
+          selectedStock: _selectedStock,
+          onStockChanged: (stock) {
+            setState(() {
+              _selectedStock = stock;
+              _saturation = stock.saturation;
+              _lightLeakIndex = stock.id.hashCode.abs() % 42;
+              _resetTextureDefaults();
+            });
+          },
+          compact: true,
+        ),
+        const SizedBox(height: 14),
+        RetroSlider(
+          label: 'SAT',
+          icon: Icons.palette,
+          value: _saturation,
+          min: 0,
+          max: 2.0,
+          onChanged: (value) => setState(() => _saturation = value),
+        ),
+      ],
+    );
+  }
+
+  Widget _textureControls() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'DEFAULTS 58 / 35 / 100',
+                style: GoogleFonts.spaceMono(
+                  fontSize: 10,
+                  color: RetroColors.textMuted,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => setState(_resetTextureDefaults),
+              icon: const Icon(Icons.restart_alt, size: 16),
+              label: const Text('RESET'),
+            ),
+          ],
+        ),
+        RetroSlider(
+          label: 'GRAIN',
+          icon: Icons.grain,
+          value: _grain,
+          onChanged: (value) => setState(() => _grain = value),
+        ),
+        RetroSlider(
+          label: 'LEAK',
+          icon: Icons.flare,
+          value: _leakStrength,
+          onChanged: (value) => setState(() => _leakStrength = value),
+        ),
+        RetroSlider(
+          label: 'DUST',
+          icon: Icons.blur_on,
+          value: _dustStrength,
+          onChanged: (value) => setState(() => _dustStrength = value),
+        ),
+        RetroSlider(
+          label: 'VIGN',
+          icon: Icons.vignette,
+          value: _vignette,
+          onChanged: (value) => setState(() => _vignette = value),
+        ),
+        RetroSlider(
+          label: 'SCRATCH',
+          icon: Icons.brush,
+          value: _scratchLevel,
+          onChanged: (value) => setState(() => _scratchLevel = value),
+        ),
+      ],
+    );
+  }
+
+  Widget _dateControls() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          title: Text(
+            'Date stamp',
             style: GoogleFonts.spaceMono(
               fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: RetroColors.accent,
-              letterSpacing: 1.8,
+              color: RetroColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
+          subtitle: Text(
+            _dateStampSummary,
             style: GoogleFonts.inter(
-              fontSize: 13,
+              fontSize: 12,
               color: RetroColors.textSecondary,
-              height: 1.45,
             ),
           ),
-          const SizedBox(height: 16),
-          child,
+          value: _dateStampEnabled,
+          onChanged: (value) => setState(() => _dateStampEnabled = value),
+          activeColor: RetroColors.accent,
+          contentPadding: EdgeInsets.zero,
+        ),
+        if (_dateStampEnabled) ...[
+          const SizedBox(height: 12),
+          _fieldLabel('STYLE'),
+          const SizedBox(height: 10),
+          _chipSelector<DateStampStyle>(
+            DateStampStyle.values,
+            _dateStampStyle,
+            (style) => style.label,
+            (style) => setState(() => _dateStampStyle = style),
+          ),
+          const SizedBox(height: 18),
+          _fieldLabel('POSITION'),
+          const SizedBox(height: 10),
+          _chipSelector<DateStampPosition>(
+            DateStampPosition.values,
+            _dateStampPosition,
+            (position) => position.label,
+            (position) => setState(() => _dateStampPosition = position),
+          ),
         ],
+      ],
+    );
+  }
+
+  Widget _developBar() {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        child: SizedBox(
+          height: 52,
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _isProcessing ? null : _reprocess,
+            icon:
+                _isProcessing
+                    ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                    : const Icon(Icons.auto_fix_high),
+            label: Text(
+              _isProcessing ? 'DEVELOPING' : 'DEVELOP',
+              style: GoogleFonts.spaceMono(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+        ),
       ),
     );
+  }
+
+  void _resetTextureDefaults() {
+    _grain = RetroDefaults.grain;
+    _leakStrength = RetroDefaults.leakStrength;
+    _dustStrength = RetroDefaults.dustStrength;
+    _vignette = RetroDefaults.vignette;
+    _scratchLevel = RetroDefaults.scratchLevel;
   }
 
   Widget _fieldLabel(String title) {
@@ -523,9 +436,9 @@ class _EditorScreenState extends State<EditorScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: Colors.black.withValues(alpha: 0.46),
         borderRadius: BorderRadius.circular(RetroDimens.radiusXl),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
+        border: Border.all(color: color.withValues(alpha: 0.42)),
       ),
       child: Text(
         label,
@@ -563,12 +476,11 @@ class _EditorScreenState extends State<EditorScreen> {
               selected: isSelected,
               onSelected: (_) => onSelected(value),
               selectedColor: RetroColors.accent,
-              backgroundColor: RetroColors.background.withValues(alpha: 0.65),
+              backgroundColor: RetroColors.surface,
               side: BorderSide(
                 color:
                     isSelected ? RetroColors.accent : RetroColors.surfaceLight,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             );
           }).toList(),
     );
